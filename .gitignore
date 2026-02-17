@@ -1,0 +1,105 @@
+# ===== Environment & Secrets =====
+.env
+.env.local
+.env.*.local
+.env.production
+*.pem
+*.key
+
+# ===== Private Thesis Config =====
+# Your actual investment thesis (weights, prompts, pillar definitions).
+# Only thesis.example.yaml is committed.
+config/thesis.yaml
+config/prompts/
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===== Testing =====
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ===== IDEs =====
+.vscode/
+.idea/
+.antigravity/
+*.swp
+*.swo
+*~
+
+# ===== Database & Data (NEVER commit) =====
+*.db
+*.db-shm
+*.db-wal
+*.db.snapshot
+*.sqlite
+*.sqlite3
+data/
+!data/.gitkeep
+
+# ===== Logs & Diagnostics =====
+*.log
+logs/
+
+# ===== Outputs (generated reports with real data) =====
+outputs/
+!outputs/.gitkeep
+
+# ===== Node / Frontend =====
+node_modules/
+src/web/ui/dist/
+.vite/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===== Session & Auth =====
+**/storage_state.json
+**/linkedin_session/
+*session*.json
+
+# ===== Private Scripts =====
+# Only scripts/canonical/ and scripts/README.md are public infrastructure.
+# Everything else contains PE firm names, company IDs, or deal-specific research.
+scripts/*
+!scripts/canonical/
+!scripts/README.md
+
+# ===== Runtime State =====
+src/web/state.json
+
+# ===== Temporary / Generated Files =====
+*.tmp
+*.bak
+test_log.txt
+latest_briefing.md
+
+# ===== Batch Files With Credentials =====
+run_remote_server.bat

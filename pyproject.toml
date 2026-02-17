@@ -1,0 +1,57 @@
+[project]
+name = "radar"
+version = "0.1.0"
+description = "RADAR - Real-time Automated Discovery & Analysis for Returns. AI-powered investment intelligence for private equity."
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+readme = "README.md"
+dependencies = [
+    "playwright",
+    "beautifulsoup4",
+    "lxml",
+    "sqlalchemy",
+    "alembic",
+    "asyncpg",
+    "psycopg2-binary",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "httpx",
+    "openai",
+    "pandas",
+    "openpyxl",
+    "python-docx",
+    "pyyaml",
+    "pytest",
+    "pytest-asyncio",
+    "rich",
+    "pypdf",
+    "python-multipart",
+    "aiofiles",
+    "fastapi[standard]>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "aiosqlite>=0.19.0",
+    "pyngrok",
+    "apscheduler",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "ipython",
+    "pytest-cov",
+    "pytest-mock",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=src"

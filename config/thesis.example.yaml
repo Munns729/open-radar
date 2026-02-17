@@ -1,0 +1,198 @@
+# =============================================================================
+# RADAR Investment Thesis Configuration — EXAMPLE
+#
+# This is a working example thesis for a European mid-market PE fund targeting
+# tech-enabled services with structural moats. Copy to thesis.yaml and
+# customise for your own investment strategy.
+#
+# cp config/thesis.example.yaml config/thesis.yaml
+# =============================================================================
+
+name: "Example European Tech Services Thesis"
+version: "1.0"
+description: >
+  Mid-market European B2B technology services businesses with structural
+  defensibility. Targets companies with £10-100M revenue and moats that
+  survive competitive commoditisation.
+
+# =============================================================================
+# MOAT PILLARS
+# Define your scoring dimensions. Weights must sum to 1.0.
+# =============================================================================
+pillars:
+  regulatory:
+    name: "Regulatory & Compliance"
+    weight: 0.25
+    max_raw_score: 100
+    evidence_threshold: 30
+    description: "Barriers from licenses, mandates, or certifications."
+    prompt_guidance: |
+      Look for: specific certifications (AS9100, ISO 17025, NADCAP, UKAS, FDA, MHRA, Part 145, Notified Body).
+      Score 70-100: Specific certification numbers or accreditation statements.
+      Score 40-69: Compliance references without proof.
+      Score 0: Just being in a regulated industry is NOT evidence.
+
+  network:
+    name: "Network Effects"
+    weight: 0.25
+    max_raw_score: 100
+    evidence_threshold: 30
+    description: "Two-sided markets, platform dynamics, ecosystem lock-in."
+    prompt_guidance: |
+      Look for: marketplace dynamics, user counts, platform metrics.
+      Score 70-100: User counts, transaction volume, proven lock-in.
+      Score 40-69: Platform dynamics mentioned but scale unclear.
+      Score 0: Standard service business.
+
+  switching_costs:
+    name: "Switching Costs"
+    weight: 0.20
+    max_raw_score: 100
+    evidence_threshold: 30
+    description: "Integration depth, workflow embedding, data lock-in."
+    prompt_guidance: |
+      Look for: ERP integrations, API dependencies, embedded workflows, data migration barriers.
+      Score 70-100: Deep system integrations, proprietary data formats.
+      Score 40-69: Moderate integration, standard APIs.
+      Score 0: Easy to replace.
+
+  ip:
+    name: "Intellectual Property"
+    weight: 0.20
+    max_raw_score: 100
+    evidence_threshold: 30
+    description: "Patents, proprietary technology, trade secrets."
+    prompt_guidance: |
+      Look for: patent filings, proprietary algorithms, unique datasets.
+      Score 70-100: Granted patents, unique proprietary technology.
+      Score 40-69: Pending patents, domain-specific know-how.
+      Score 0: No evidence of proprietary technology.
+
+  brand:
+    name: "Brand & Reputation"
+    weight: 0.10
+    max_raw_score: 100
+    evidence_threshold: 30
+    description: "Customer loyalty, trusted vendor status, reputation moat."
+    prompt_guidance: |
+      Look for: long-standing client relationships, industry recognition, sole-source status.
+      Score 70-100: Named reference clients, awards, sole-source contracts.
+      Score 40-69: General reputation signals.
+      Score 0: No brand differentiation.
+
+# =============================================================================
+# TIER THRESHOLDS (applied to weighted 0-100 score)
+# =============================================================================
+tier_thresholds:
+  tier_1a: 70    # Strong structural moats
+  tier_1b: 50    # Meaningful defensibility
+  tier_2: 30     # Some moat evidence
+
+# =============================================================================
+# CERTIFICATION EVIDENCE
+# Hard-signal scores for known certifications. Higher = stronger evidence.
+# =============================================================================
+certification_scores:
+  AS9100: 45
+  "Part 145": 45
+  Nadcap: 45
+  ISO17025: 40
+  ISO13485: 35
+  ISO27001: 25
+  ISO9001: 10
+  FCA: 45
+  MHRA: 40
+
+# Certifications that also prove jurisdiction-specific lock-in
+sovereignty_certs: []
+
+# =============================================================================
+# KEYWORD LISTS
+# =============================================================================
+sovereignty_keywords: []
+
+known_testing_firms:
+  - intertek
+  - "bureau veritas"
+  - sgs
+  - eurofins
+  - tuv
+  - dekra
+
+known_platforms:
+  - rightmove
+  - autotrader
+  - trainline
+
+# =============================================================================
+# RISK SIGNALS
+# =============================================================================
+risk:
+  max_penalty: 20
+  declining_revenue_penalty: 10
+  keywords:
+    - administration
+    - liquidation
+    - insolvency
+    - dissolved
+    - "winding up"
+    - "revenue decline"
+    - "profits fell"
+    - "loss-making"
+    - "going concern"
+    - "material uncertainty"
+
+# =============================================================================
+# BUSINESS FILTERS (target universe definition)
+# =============================================================================
+business_filters:
+  min_revenue: 5_000_000
+  max_revenue: 100_000_000
+  min_employees: 20
+  max_employees: 500
+  target_countries: []
+  positive_keywords:
+    - "managed service"
+    - platform
+    - solution
+    - provider
+    - "cloud services"
+    - "data services"
+    - cybersecurity
+    - compliance
+    - software
+    - saas
+  negative_keywords:
+    - recruitment
+    - staffing
+    - "marketing agency"
+    - "creative agency"
+    - "web design"
+    - "seo agency"
+    - "pr agency"
+    - freelance
+    - contractor
+  negative_keyword_penalty: 5
+
+# =============================================================================
+# DEAL SCREENING (informational, not part of moat score)
+# =============================================================================
+deal_screening:
+  revenue_sweet_spot: [10_000_000, 150_000_000]
+  revenue_in_range_score: 25
+  revenue_above_max_score: 15
+  strong_margin_threshold: 20.0
+  strong_margin_score: 25
+  healthy_margin_threshold: 15.0
+  healthy_margin_score: 15
+  ok_margin_threshold: 10.0
+  ok_margin_score: 10
+
+# =============================================================================
+# LLM PROMPTS
+# Leave blank to auto-generate from pillar definitions above.
+# Set explicitly to override with your own prompt engineering.
+# =============================================================================
+moat_analysis_system_prompt: "You are an expert investment analyst. Always respond in valid JSON."
+moat_analysis_prompt_template: ""
+semantic_enrichment_prompt_template: ""

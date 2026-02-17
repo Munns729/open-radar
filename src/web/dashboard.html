@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investor Radar - Universe Scanner</title>
+    <style>
+        :root {
+            --bg: #0f1115;
+            --card: #181b21;
+            --primary: #6366f1;
+            --active: #10b981;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: #2d323b;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 20px;
+            box-sizing: border-box;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .badge {
+            background: var(--card);
+            padding: 4px 12px;
+            border-radius: 99px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .dot.active {
+            background: var(--active);
+            box-shadow: 0 0 10px var(--active);
+        }
+
+        /* PIPELINE */
+        .pipeline {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 24px;
+            height: 100%;
+        }
+
+        .zone {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            opacity: 0.5;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .zone.active {
+            opacity: 1;
+            border-color: var(--primary);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.1);
+        }
+
+        .zone-header {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .zone-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .zone-icon {
+            font-size: 40px;
+            margin-bottom: 16px;
+        }
+
+        .zone-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .zone-desc {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* STATUS METRICS */
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .metric-card {
+            background: var(--card);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* LOGS */
+        .logs {
+            background: #000;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            height: 150px;
+            overflow-y: hidden;
+            border: 1px solid var(--border);
+            color: #a3a3a3;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            border-bottom: 1px solid #1a1a1a;
+            padding-bottom: 4px;
+        }
+
+        .log-entry:first-child {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        /* Connection Lines */
+        .connector {
+            position: absolute;
+            top: 50%;
+            right: -25px;
+            width: 26px;
+            height: 2px;
+            background: var(--border);
+            z-index: 10;
+        }
+
+        .zone.active .connector {
+            background: var(--primary);
+        }
+
+        /* MOBILE RESPONSIVE */
+        @media (max-width: 768px) {
+            body {
+                padding: 12px;
+                gap: 12px;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+
+            h1 {
+                font-size: 20px;
+            }
+
+            /* Stack metrics vertically on mobile */
+            .metrics {
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+
+            .metric-card {
+                padding: 12px;
+            }
+
+            .metric-value {
+                font-size: 20px;
+            }
+
+            /* Stack pipeline zones vertically */
+            .pipeline {
+                grid-template-columns: 1fr;
+                gap: 16px;
+                height: auto;
+            }
+
+            .zone {
+                padding: 16px;
+            }
+
+            .connector {
+                display: none;
+                /* Hide horizontal connectors on mobile */
+            }
+
+            /* Remote Control Panel - stack elements */
+            .zone div[style*="display: flex"] {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 12px !important;
+            }
+
+            /* Make buttons full width on mobile */
+            button {
+                width: 100%;
+                padding: 14px 24px !important;
+                /* Larger touch target */
+            }
+
+            /* Adjust input fields */
+            input[type="text"] {
+                font-size: 16px !important;
+                /* Prevent zoom on iOS */
+            }
+
+            /* Checkboxes - larger touch targets */
+            input[type="checkbox"] {
+                width: 20px;
+                height: 20px;
+                margin-right: 8px;
+            }
+
+            label {
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+            }
+
+            .logs {
+                height: 100px;
+                font-size: 11px;
+            }
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <header>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="4"></circle>
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+            </svg>
+            <h1>Investor Radar <span style="font-weight:400; color:var(--text-muted);">// Live Monitor</span></h1>
+        </div>
+        <div class="badge">
+            <div class="dot" id="status-dot"></div>
+            <span id="status-text">OFFLINE</span>
+        </div>
+    </header>
+
+    <div class="metrics">
+        <div class="metric-card">
+            <div class="metric-label">TOTAL DISCOVERED</div>
+            <div class="metric-value" id="stat-found">0</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">ENRICHED</div>
+            <div class="metric-value" id="stat-enriched">0</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">SCORED</div>
+            <div class="metric-value" id="stat-scored">0</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">TIER 1 TARGETS</div>
+            <div class="metric-value" id="stat-tier1">0</div>
+        </div>
+    </div>
+
+    <!-- CONTROL PANEL -->
+    <div class="zone" style="opacity: 1; border-color: var(--border);">
+        <div class="zone-header">REMOTE CONTROL</div>
+        <div style="display: flex; gap: 20px; text-align: left; align-items: flex-end;">
+
+            <!-- Sources -->
+            <div style="flex: 1;">
+                <label
+                    style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 8px;">SOURCES</label>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <label><input type="checkbox" name="source" value="Wikipedia" checked> Wikipedia</label>
+                    <label><input type="checkbox" name="source" value="Clutch" checked> Clutch</label>
+                    <label><input type="checkbox" name="source" value="GoodFirms"> GoodFirms</label>
+                    <label><input type="checkbox" name="source" value="AS9100"> AS9100</label>
+                </div>
+            </div>
+
+            <!-- Countries -->
+            <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 8px;">COUNTRIES
+                (e.g. FR, DE)</label>
+            <input type="text" id="scan-countries" value="FR, DE"
+                style="width: 100%; background: #000; border: 1px solid var(--border); color: white; padding: 8px; border-radius: 4px;">
+        </div>
+
+        <!-- Limit -->
+        <div style="width: 100px;">
+            <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 8px;">LIMIT
+                (Max)</label>
+            <input type="number" id="scan-limit" value="10" min="1" max="100"
+                style="width: 100%; background: #000; border: 1px solid var(--border); color: white; padding: 8px; border-radius: 4px;">
+        </div>
+
+        <!-- Action -->
+        <button onclick="startRemoteScan()"
+            style="background: var(--primary); color: white; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+            START SCAN via AGENT
+        </button>
+    </div>
+    </div>
+
+    <div class="pipeline">
+        <!-- Zone 1 -->
+        <div class="zone" id="zone-1">
+            <div class="zone-header">ZONE 1 <div class="connector"></div>
+            </div>
+            <div class="zone-content">
+                <div class="zone-icon">📡</div>
+                <div class="zone-title">Discovery</div>
+                <div class="zone-desc">Scanning Sources<br>(Wikipedia, Clutch, GoodFirms)</div>
+            </div>
+        </div>
+
+        <!-- Zone 2 -->
+        <div class="zone" id="zone-2">
+            <div class="zone-header">ZONE 2 <div class="connector"></div>
+            </div>
+            <div class="zone-content">
+                <div class="zone-icon">🕷️</div>
+                <div class="zone-title">Extraction</div>
+                <div class="zone-desc">Agentic Hand-off<br>(Static vs Browser Agent)</div>
+            </div>
+        </div>
+
+        <!-- Zone 3 -->
+        <div class="zone" id="zone-3">
+            <div class="zone-header">ZONE 3</div>
+            <div class="zone-content">
+                <div class="zone-icon">🧠</div>
+                <div class="zone-title">Intelligence</div>
+                <div class="zone-desc">LLM Grading & Scoring<br>(Investment Thesis)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="logs" id="logs-container">
+        <div class="log-entry">Waiting for connection...</div>
+    </div>
+
+    <script>
+        async function fetchState() {
+            try {
+                // Fetch state.json from the same directory (assuming served correctly)
+                // Add credentials: 'include' to ensure Basic Auth is sent
+                const response = await fetch('state.json?t=' + new Date().getTime(), { credentials: 'include' });
+
+                if (response.status === 401) {
+                    document.getElementById('status-text').innerText = "AUTH REQUIRED";
+                    return;
+                }
+
+                const data = await response.json();
+
+                // Update Status
+                document.getElementById('status-text').innerText = data.status.toUpperCase();
+                document.getElementById('status-dot').className = data.status === 'running' ? 'dot active' : 'dot';
+
+                // Update Stats
+                document.getElementById('stat-found').innerText = data.stats.total_found;
+                document.getElementById('stat-enriched').innerText = data.stats.enriched;
+                document.getElementById('stat-scored').innerText = data.stats.scored;
+                document.getElementById('stat-tier1').innerText = data.stats.tier_1_count;
+
+                // Update Zones
+                // Reset all
+                [1, 2, 3].forEach(z => document.getElementById(`zone-${z}`).classList.remove('active'));
+
+                // Set active
+                if (data.current_zone > 0) {
+                    document.getElementById(`zone-${data.current_zone}`).classList.add('active');
+
+                    // Add connector animation class if needed
+                }
+
+                // Logs
+                const container = document.getElementById('logs-container');
+                container.innerHTML = data.recent_logs.map(log =>
+                    `<div class="log-entry">${log}</div>`
+                ).join('');
+
+            } catch (e) {
+                console.log("Waiting for scanner...", e);
+            }
+        }
+
+        async function startRemoteScan() {
+            const sources = Array.from(document.querySelectorAll('input[name="source"]:checked')).map(cb => cb.value);
+            const countries = document.getElementById('scan-countries').value.split(',').map(s => s.trim());
+            const limit = parseInt(document.getElementById('scan-limit').value) || 15;
+
+            if (sources.length === 0) {
+                alert("Please select at least one source.");
+                return;
+            }
+
+            const btn = document.querySelector('button[onclick="startRemoteScan()"]');
+            const originalText = btn.innerText;
+            btn.innerText = "STARTING...";
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/universe/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include', // Ensure Auth is sent
+                    body: JSON.stringify({
+                        mode: "full",
+                        sources: sources,
+                        countries: countries,
+                        limit: limit,
+                        enrichment_level: "full"
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Server responded with ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+                alert("Scan Initiated: " + data.message);
+
+                // Immediate update
+                setTimeout(fetchState, 500);
+
+            } catch (e) {
+                alert("Error starting scan: " + e.message);
+                console.error(e);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // Poll every 1s
+        setInterval(fetchState, 1000);
+        fetchState();
+    </script>
+</body>
+
+</html>

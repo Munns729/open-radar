@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RADAR | Market Intel</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-satellite-dish"></i> RADAR
+            </div>
+            <ul class="nav-links">
+                <li class="active" data-tab="overview"><i class="fa-solid fa-chart-line"></i> Overview</li>
+                <li data-tab="feed"><i class="fa-solid fa-rss"></i> Live Feed</li>
+                <li data-tab="trends"><i class="fa-solid fa-bolt"></i> Trends</li>
+                <li data-tab="briefings"><i class="fa-solid fa-file-invoice"></i> Briefings</li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="content">
+            <header>
+                <h1>Market Intelligence</h1>
+                <button id="refresh-btn" class="glow-btn"><i class="fa-solid fa-sync"></i> Run Scan</button>
+            </header>
+
+            <!-- Stats Row -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Active Sources</h3>
+                    <div class="value" id="count-sources">-</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Items</h3>
+                    <div class="value" id="count-items">-</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Active Trends</h3>
+                    <div class="value" id="count-trends">-</div>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div id="view-overview" class="view-section active">
+                <h2>Recent Intelligence</h2>
+                <div class="feed-list" id="overview-feed">
+                    <!-- Items injected here -->
+                </div>
+            </div>
+
+            <div id="view-feed" class="view-section" style="display:none;">
+                <h2>Live Intelligence Feed</h2>
+                <div class="filters">
+                    <button class="filter-btn active" data-cat="all">All</button>
+                    <button class="filter-btn" data-cat="aerospace">Aerospace</button>
+                    <button class="filter-btn" data-cat="healthcare">Healthcare</button>
+                    <button class="filter-btn" data-cat="fintech">Fintech</button>
+                    <button class="filter-btn" data-cat="ma">M&A</button>
+                    <button class="filter-btn" data-cat="regulatory">Regulatory</button>
+                </div>
+                <div class="feed-list" id="full-feed"></div>
+            </div>
+
+            <div id="view-trends" class="view-section" style="display:none;">
+                <h2>Emerging Trends</h2>
+                <div class="cards-grid" id="trends-grid"></div>
+            </div>
+
+            <div id="view-briefings" class="view-section" style="display:none;">
+                <h2>Weekly Briefings</h2>
+                <div class="briefing-container" id="briefing-content"></div>
+            </div>
+
+        </main>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>

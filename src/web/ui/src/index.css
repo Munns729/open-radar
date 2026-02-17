@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,100..1000&display=swap');
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  :root {
+    /* Page background */
+    --page-bg: #0d0d0d;
+
+    /* Surface colors */
+    --surface: #171717;
+    --surface-alt: #262626;
+    --surface-hover: #333333;
+
+    /* Border colors */
+    --border-main: #404040;
+    --border-subtle: #262626;
+
+    /* Text colors */
+    --text-pri: #ededed;
+    --text-sec: #a3a3a3;
+    --text-ter: #737373;
+
+    /* Component specific */
+    --thead-bg: #121212;
+
+    /* Accents */
+    --accent-orange: #f97316;
+
+    /* Primary (Blue) */
+    --primary: #3B82F6;
+    --primary-hover: #2563EB;
+    --primary-light: #60A5FA;
+    --primary-dark: #1D4ED8;
+
+    /* Semantic Colors */
+    --success: #10B981;
+    --success-light: #34D399;
+    --success-bg: #064E3B;
+    --warning: #F59E0B;
+    --warning-light: #FBBF24;
+    --warning-bg: #78350F;
+    --danger: #EF4444;
+    --danger-light: #F87171;
+    --danger-bg: #7F1D1D;
+
+    /* Priority Signals: HOT */
+    --priority-hot-text: #f87171;
+    --priority-hot-bg: #3b1111;
+    --priority-hot-border: #7f1d1d;
+
+    /* Priority Signals: HIGH */
+    --priority-high-text: #fb923c;
+    --priority-high-bg: #3b2011;
+    --priority-high-border: #9a3412;
+
+    /* Priority Signals: MED */
+    --priority-med-text: #facc15;
+    --priority-med-bg: #3b2a0a;
+    --priority-med-border: #a16207;
+
+    /* Priority Signals: LOW */
+    --priority-low-text: #94a3b8;
+    --priority-low-bg: #1e293b;
+    --priority-low-border: #475569;
+
+    /* Layout */
+    --sidebar-width: 256px;
+    --sidebar-collapsed-width: 72px;
+    --topbar-height: 64px;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-text-pri;
+  }
+}

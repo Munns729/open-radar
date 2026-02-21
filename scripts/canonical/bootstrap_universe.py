@@ -5,7 +5,7 @@ Useful when scrapers are blocked or in early development.
 import asyncio
 import logging
 from src.universe.database import CompanyModel
-from src.universe.workflow import enrich_companies, run_scoring, SessionLocal, init_db
+from src.universe.workflow import enrich_companies, run_scoring, init_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Bootstrap")
@@ -48,33 +48,35 @@ TARGETS = [
 ]
 
 async def bootstrap():
+    from src.core.database import get_async_db
+
     await init_db()
-    session = SessionLocal()
-    
-    count = 0
-    for name in TARGETS:
-        exists = session.query(CompanyModel).filter(CompanyModel.name == name).first()
-        if not exists:
-            logger.info(f"Adding {name}...")
-            c = CompanyModel(
-                name=name, 
-                hq_country="GB", 
-                discovered_via="Bootstrap"
-            )
-            session.add(c)
-            count += 1
-    
-    session.commit()
-    logger.info(f"Added {count} new companies.")
-    
-    if count > 0:
-        logger.info("Enriching with Companies House data...")
-        await enrich_companies(session)
-        
-        logger.info("Running Scoring...")
-        await run_scoring(session)
-        
-    session.close()
+
+    async with get_async_db() as session:
+        count = 0
+        for name in TARGETS:
+            from sqlalchemy import select
+            result = await session.execute(select(CompanyModel).where(CompanyModel.name == name))
+            exists = result.scalar_one_or_none()
+            if not exists:
+                logger.info(f"Adding {name}...")
+                c = CompanyModel(
+                    name=name,
+                    hq_country="GB",
+                    discovered_via="Bootstrap"
+                )
+                session.add(c)
+                count += 1
+
+        await session.commit()
+        logger.info(f"Added {count} new companies.")
+
+        if count > 0:
+            logger.info("Enriching with Companies House data...")
+            await enrich_companies(session)
+
+            logger.info("Running Scoring...")
+            await run_scoring(session)
 
 if __name__ == "__main__":
     asyncio.run(bootstrap())

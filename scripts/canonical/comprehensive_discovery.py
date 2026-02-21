@@ -8,7 +8,7 @@ import logging
 from typing import List
 from src.universe.scrapers.companies_house_scraper import CompaniesHouseScraper
 from src.universe.database import CompanyModel, CertificationModel
-from src.universe.workflow import SessionLocal, init_db, run_scoring
+from src.universe.workflow import init_db, run_scoring
 from src.universe.moat_scorer import MoatScorer
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -28,11 +28,13 @@ SIC_CODES = {
 }
 
 async def save_batch(session, companies_data: List[dict], sector_tag: str):
+    from sqlalchemy import select
+
     count = 0
     for item in companies_data:
         co_number = item.get('company_number')
-        exists = session.query(CompanyModel).filter(CompanyModel.companies_house_number == co_number).first()
-        
+        result = await session.execute(select(CompanyModel).where(CompanyModel.companies_house_number == co_number))
+        exists = result.scalar_one_or_none()
         if not exists:
             c = CompanyModel(
                 name=item.get('company_name'),
@@ -46,73 +48,61 @@ async def save_batch(session, companies_data: List[dict], sector_tag: str):
             )
             session.add(c)
             count += 1
-    session.commit()
+    await session.commit()
     return count
 
 async def run_discovery_sharded(start_year=2000, end_year=2025):
-    await init_db()
-    session = SessionLocal()
-    
-    async with CompaniesHouseScraper() as scraper:
-        total_discovered = 0
-        
-        for sector, sics in SIC_CODES.items():
-            logger.info(f"--- Starting Sector: {sector} ---")
-            
-            for sic in sics:
-                logger.info(f"Scanning SIC {sic} by year ({start_year}-{end_year})...")
-                
-                for year in range(start_year, end_year + 1):
-                    # Define date range for this shard
-                    date_from = f"{year}-01-01"
-                    date_to = f"{year}-12-31"
-                    
-                    start_index = 0
-                    has_more = True
-                    shard_count = 0
-                    
-                    while has_more:
-                        try:
-                            # Add delay between pages
-                            await asyncio.sleep(0.2)
-                            
-                            results = await scraper.advanced_search(
-                                [sic], 
-                                start_index=start_index,
-                                incorporated_from=date_from,
-                                incorporated_to=date_to
-                            )
-                            
-                            if not results:
-                                has_more = False
-                                break
-                                
-                            new_count = await save_batch(session, results, sector)
-                            total_discovered += new_count
-                            shard_count += len(results)
-                            
-                            if len(results) < 100:
-                                has_more = False
-                            else:
-                                start_index += len(results)
-                                
-                            # Safety limit per year shard (shouldn't hit API limit easily now)
-                            if start_index > 4000: 
-                                has_more = False
-                                
-                        except Exception as e:
-                            logger.error(f"Error SIC {sic} Year {year} offset {start_index}: {e}")
-                            has_more = False
-                    
-                    logger.info(f"SIC {sic} [{year}]: Found {shard_count} companies.")
+    from src.core.database import get_async_db
 
-        session.close()
+    await init_db()
+
+    async with get_async_db() as session:
+        async with CompaniesHouseScraper() as scraper:
+            total_discovered = 0
+
+            for sector, sics in SIC_CODES.items():
+                logger.info(f"--- Starting Sector: {sector} ---")
+
+                for sic in sics:
+                    logger.info(f"Scanning SIC {sic} by year ({start_year}-{end_year})...")
+
+                    for year in range(start_year, end_year + 1):
+                        date_from = f"{year}-01-01"
+                        date_to = f"{year}-12-31"
+                        start_index = 0
+                        has_more = True
+                        shard_count = 0
+
+                        while has_more:
+                            try:
+                                await asyncio.sleep(0.2)
+                                results = await scraper.advanced_search(
+                                    [sic],
+                                    start_index=start_index,
+                                    incorporated_from=date_from,
+                                    incorporated_to=date_to
+                                )
+                                if not results:
+                                    has_more = False
+                                    break
+                                new_count = await save_batch(session, results, sector)
+                                total_discovered += new_count
+                                shard_count += len(results)
+                                if len(results) < 100:
+                                    has_more = False
+                                else:
+                                    start_index += len(results)
+                                if start_index > 4000:
+                                    has_more = False
+                            except Exception as e:
+                                logger.error(f"Error SIC {sic} Year {year} offset {start_index}: {e}")
+                                has_more = False
+                        logger.info(f"SIC {sic} [{year}]: Found {shard_count} companies.")
+
         logger.info(f"Deep Discovery Complete. Total New: {total_discovered}")
-        
-    logger.info("Running scoring pass...")
-    session = SessionLocal()
-    await run_scoring(session)
-    session.close()
+
+        logger.info("Running scoring pass...")
+        await run_scoring(session)
 
 if __name__ == "__main__":
     asyncio.run(run_discovery_sharded(1995, 2025))

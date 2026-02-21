@@ -89,7 +89,7 @@ These are transient Python attributes (prefixed with `_`), not SQLAlchemy column
 
 ## Part C: Change detection in `workflow.py`
 
-In `run_scoring_pipeline()`, find the scoring loop (currently around line 245 in the `# 3. Update Scores` section):
+In `src/universe/programs/scoring.py`, in `run_scoring()`, find the scoring loop (the `for idx, company in enumerate(to_score):` section):
 
 ```python
     # 3. Update Scores

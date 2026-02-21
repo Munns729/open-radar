@@ -2,11 +2,11 @@
 
 The `src.universe` module is the entry point of the RADAR funnel. It is responsible for discovering companies, populating the database, enriching data, and performing the initial "Moat Score" to filter for quality.
 
-## 1. Workflow Orchestration (`src.universe.workflow`)
+## 1. Workflow Orchestration (`src.universe.workflow` + `src.universe.programs`)
 
-The main entry point is `build_universe`, which runs in three phases:
+The main entry point is `build_universe`, which runs in four phases. Implementation lives in `programs/`: discovery, extraction, enrichment, scoring.
 
-### Phase 1: Discovery
+### Phase 1: Discovery (`programs.discovery.run_discovery`)
 Scrapers run to find "raw" company targets.
 -   **AS9100 & ISO Registries**: Manufacturing/Engineering targets.
 -   **Clutch & GoodFirms**: Tech services and agencies.
@@ -14,14 +14,18 @@ Scrapers run to find "raw" company targets.
 
 **Deduplication**: Companies are saved to the DB with a check against existing names to prevent duplicates.
 
-### Phase 2: Enrichment (`enrich_companies`)
+### Phase 2: Extraction (`programs.extraction.run_extraction`, formerly `enrich_companies`)
 Once companies are in the DB, this phase fills in the gaps:
-1.  **Companies House**: Fetches financial data (Revenue, EBITDA, Employees) for UK companies using the API.
-2.  **Website Scraping**: Extracts meta descriptions and keywords to help the AI understand the business.
-3.  **Relationship Enrichment**: Finds customers/suppliers to build the knowledge graph.
+1.  **Companies House / OpenCorporates**: Fetches financial data (Revenue, EBITDA, Employees) for UK/EU companies.
+2.  **Website discovery**: Agent finds company website when missing.
+3.  **LLM enrichment**: Description, sector, revenue from website.
+4.  **Website scraping**: Raw text and keywords for downstream scoring. Sets `extraction_complete_at` when done.
 
-### Phase 3: Scoring (`run_scoring_pipeline`)
-Runs the `MoatScorer` and `GraphAnalyzer` to assign a Tier (1A/1B/2) to each company.
+### Phase 3a: Semantic Enrichment (`programs.enrichment.run_enrichment`)
+Batch LLM pillar scoring for companies with `raw_website_text` that have not yet been semantically enriched. Writes `moat_analysis["semantic"]` and `semantic_enriched_at`.
+
+### Phase 3b: Scoring (`programs.scoring.run_scoring`, formerly `run_scoring_pipeline`)
+Runs the `MoatScorer` (no graph) to assign a Tier (1A/1B/2) to each company. Records audit trail in `ScoringEvent`.
 
 ## 2. Moat Scoring (`src.universe.moat_scorer`)
 
@@ -61,6 +65,5 @@ The `moat_score` field in the database stores the **total additive score** (0-39
 -   **Tier 1B**: Score ≥ 70 (Good Defensibility)
 -   **Tier 2**: Score ≥ 30 (Watchlist)
 
-## 3. Graph Analysis
-`src.universe.graph_analyzer` builds a network graph of companies based on "Customer" and "Supplier" relationships.
--   **Centrality**: Companies that sit at the center of many relationships get a "Network Effect" boost in their Moat Score.
+## 3. Graph Analysis (currently unused in pipeline)
+`src.universe.graph_analyzer` can build a network graph of companies based on "Customer" and "Supplier" relationships. The pipeline no longer runs graph analysis or relationship enrichment; `MoatScorer` is called with `graph_signals=None`. The graph module remains available for future use.

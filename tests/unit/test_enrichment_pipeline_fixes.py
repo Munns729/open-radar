@@ -228,56 +228,69 @@ class TestMoatScorerTierAlignment:
 
 
 class TestWorkflowIntegration:
-    """Test Priority 2: UniverseEnrichmentAgent integration."""
+    """Test Priority 2: UniverseEnrichmentAgent integration (programs.extraction)."""
     
     @pytest.mark.asyncio
-    async def test_website_discovery_runs_when_no_url(self, test_db, sample_company):
+    async def test_website_discovery_runs_when_no_url(self, async_db_session):
         """Test that agent runs website discovery for companies without URLs."""
         from src.universe.workflow import enrich_companies
-        
-        # Mock the agent as async context manager (workflow uses 'async with')
+
+        company = CompanyModel(
+            name="Test Company Ltd",
+            hq_country="FR",
+            discovered_via="test",
+        )
+        async_db_session.add(company)
+        await async_db_session.commit()
+        await async_db_session.refresh(company)
+
         mock_agent_instance = AsyncMock()
         mock_agent_instance.find_website_url.return_value = "https://example.com"
         mock_agent_instance.__aenter__ = AsyncMock(return_value=mock_agent_instance)
         mock_agent_instance.__aexit__ = AsyncMock(return_value=None)
-        
-        with patch('src.universe.workflow.UniverseEnrichmentAgent', return_value=mock_agent_instance):
-            # Mock other scrapers
+
+        # Raw text must pass website_validator: length >= 100, company name tokens, and a real-site signal (e.g. "products")
+        valid_raw = "Test Company Ltd is a leading company. We offer products and services. " * 3
+
+        mock_oc = AsyncMock()
+        mock_oc.search_companies = AsyncMock(return_value=[])
+
+        with patch('src.universe.programs.extraction.UniverseEnrichmentAgent', return_value=mock_agent_instance):
             mock_ch = AsyncMock()
             mock_ch.__aenter__ = AsyncMock(return_value=mock_ch)
             mock_ch.__aexit__ = AsyncMock(return_value=None)
-            
-            mock_rel = AsyncMock()
-            mock_rel.__aenter__ = AsyncMock(return_value=mock_rel)
-            mock_rel.__aexit__ = AsyncMock(return_value=None)
-            
-            with patch('src.universe.workflow.CompaniesHouseScraper', return_value=mock_ch), \
-                 patch('src.universe.workflow.WebsiteScraper') as MockWebScraper, \
-                 patch('src.universe.workflow.RelationshipEnricher', return_value=mock_rel):
-                
+
+            with patch('src.universe.programs.extraction.CompaniesHouseScraper', return_value=mock_ch), \
+                 patch('src.universe.programs.extraction.OpenCorporatesScraper', MagicMock(return_value=mock_oc)), \
+                 patch('src.universe.programs.extraction.WebsiteScraper') as MockWebScraper:
                 mock_web_instance = AsyncMock()
                 mock_web_instance.scrape.return_value = {
                     "description": "Test desc",
                     "keywords_found": {},
-                    "raw_text": "Test content"
+                    "raw_text": valid_raw
                 }
                 MockWebScraper.return_value = mock_web_instance
-                
-                # Run enrichment
-                await enrich_companies(test_db, target_ids=[sample_company.id], force=True)
-                
-                # Verify website was discovered
-                test_db.refresh(sample_company)
-                assert sample_company.website == "https://example.com"
+
+                await enrich_companies(async_db_session, target_ids=[company.id], force=True)
+
+                await async_db_session.refresh(company)
+                assert company.website == "https://example.com"
     
     @pytest.mark.asyncio
-    async def test_llm_enrichment_runs_when_no_description(self, test_db, sample_company):
+    async def test_llm_enrichment_runs_when_no_description(self, async_db_session):
         """Test that agent runs LLM enrichment for companies with website but no description."""
-        sample_company.website = "https://example.com"
-        test_db.commit()
-        
+        company = CompanyModel(
+            name="Test Company Ltd",
+            hq_country="FR",
+            discovered_via="test",
+            website="https://example.com",
+        )
+        async_db_session.add(company)
+        await async_db_session.commit()
+        await async_db_session.refresh(company)
+
         from src.universe.workflow import enrich_companies
-        
+
         mock_agent_instance = AsyncMock()
         mock_agent_instance.run.return_value = {
             "description": "LLM-generated description",
@@ -287,20 +300,18 @@ class TestWorkflowIntegration:
         }
         mock_agent_instance.__aenter__ = AsyncMock(return_value=mock_agent_instance)
         mock_agent_instance.__aexit__ = AsyncMock(return_value=None)
-        
-        with patch('src.universe.workflow.UniverseEnrichmentAgent', return_value=mock_agent_instance):
+
+        with patch('src.universe.programs.extraction.UniverseEnrichmentAgent', return_value=mock_agent_instance):
             mock_ch = AsyncMock()
             mock_ch.__aenter__ = AsyncMock(return_value=mock_ch)
             mock_ch.__aexit__ = AsyncMock(return_value=None)
-            
-            mock_rel = AsyncMock()
-            mock_rel.__aenter__ = AsyncMock(return_value=mock_rel)
-            mock_rel.__aexit__ = AsyncMock(return_value=None)
-            
-            with patch('src.universe.workflow.CompaniesHouseScraper', return_value=mock_ch), \
-                 patch('src.universe.workflow.WebsiteScraper') as MockWebScraper, \
-                 patch('src.universe.workflow.RelationshipEnricher', return_value=mock_rel):
-                
+
+            with patch('src.universe.programs.extraction.CompaniesHouseScraper', return_value=mock_ch), \
+                 patch('src.universe.programs.extraction.WebsiteScraper') as MockWebScraper, \
+                 patch('src.universe.programs.extraction.OpenCorporatesScraper') as MockOC:
+                mock_oc = AsyncMock()
+                mock_oc.search_companies = AsyncMock(return_value=[])
+                MockOC.return_value = mock_oc
                 mock_web_instance = AsyncMock()
                 mock_web_instance.scrape.return_value = {
                     "description": "Web desc",
@@ -308,39 +319,41 @@ class TestWorkflowIntegration:
                     "raw_text": "Test content"
                 }
                 MockWebScraper.return_value = mock_web_instance
-                
-                await enrich_companies(test_db, target_ids=[sample_company.id], force=True)
-                
-                test_db.refresh(sample_company)
-                assert "LLM-generated description" in (sample_company.description or "")
+
+                await enrich_companies(async_db_session, target_ids=[company.id], force=True)
+
+                await async_db_session.refresh(company)
+                assert "LLM-generated description" in (company.description or "")
     
     @pytest.mark.asyncio
-    async def test_raw_text_stored_from_scraper(self, test_db, sample_company):
+    async def test_raw_text_stored_from_scraper(self, async_db_session):
         """Test that raw_text from WebsiteScraper is stored to database."""
-        sample_company.website = "https://example.com"
-        test_db.commit()
-        
+        company = CompanyModel(
+            name="Test Company Ltd",
+            hq_country="FR",
+            discovered_via="test",
+            website="https://example.com",
+        )
+        async_db_session.add(company)
+        await async_db_session.commit()
+        await async_db_session.refresh(company)
+
         from src.universe.workflow import enrich_companies
-        
-        test_raw_text = "This is website content. " * 100
-        
+
+        # Must pass website_validator: length >= 100, company name tokens, real-site signal
+        test_raw_text = "Test Company Ltd is a leading company. We offer products and services. " * 10
+
         mock_agent = AsyncMock()
         mock_agent.__aenter__ = AsyncMock(return_value=mock_agent)
         mock_agent.__aexit__ = AsyncMock(return_value=None)
-        
+
         mock_ch = AsyncMock()
         mock_ch.__aenter__ = AsyncMock(return_value=mock_ch)
         mock_ch.__aexit__ = AsyncMock(return_value=None)
-        
-        mock_rel = AsyncMock()
-        mock_rel.__aenter__ = AsyncMock(return_value=mock_rel)
-        mock_rel.__aexit__ = AsyncMock(return_value=None)
-        
-        with patch('src.universe.workflow.CompaniesHouseScraper', return_value=mock_ch), \
-             patch('src.universe.workflow.WebsiteScraper') as MockWebScraper, \
-             patch('src.universe.workflow.RelationshipEnricher', return_value=mock_rel), \
-             patch('src.universe.workflow.UniverseEnrichmentAgent', return_value=mock_agent):
-            
+
+        with patch('src.universe.programs.extraction.CompaniesHouseScraper', return_value=mock_ch), \
+             patch('src.universe.programs.extraction.WebsiteScraper') as MockWebScraper, \
+             patch('src.universe.programs.extraction.UniverseEnrichmentAgent', return_value=mock_agent):
             mock_web_instance = AsyncMock()
             mock_web_instance.scrape.return_value = {
                 "description": "Test",
@@ -348,41 +361,34 @@ class TestWorkflowIntegration:
                 "raw_text": test_raw_text
             }
             MockWebScraper.return_value = mock_web_instance
-            
-            await enrich_companies(test_db, target_ids=[sample_company.id], force=True)
-            
-            test_db.refresh(sample_company)
-            assert sample_company.raw_website_text == test_raw_text
+
+            await enrich_companies(async_db_session, target_ids=[company.id], force=True)
+
+            await async_db_session.refresh(company)
+            assert company.raw_website_text == test_raw_text
 
 
 class TestEndToEndFlow:
-    """Integration test for complete enrichment flow."""
-    
+    """Integration test for complete enrichment flow (programs.extraction + programs.scoring)."""
+
     @pytest.mark.asyncio
-    async def test_full_enrichment_pipeline(self, test_db):
-        """Test complete flow: discovery → enrichment → scoring."""
-        # Create company without website or description
+    async def test_full_enrichment_pipeline(self, async_db_session):
+        """Test complete flow: extraction → scoring."""
         company = CompanyModel(
             name="Acme Corp",
             hq_country="FR",
             discovered_via="test"
         )
-        test_db.add(company)
-        test_db.commit()
-        
+        async_db_session.add(company)
+        await async_db_session.commit()
+        await async_db_session.refresh(company)
+
         from src.universe.workflow import enrich_companies, run_scoring_pipeline
-        
-        # Build proper async context manager mocks
+
         mock_ch = AsyncMock()
         mock_ch.__aenter__ = AsyncMock(return_value=mock_ch)
         mock_ch.__aexit__ = AsyncMock(return_value=None)
-        
-        mock_rel = AsyncMock()
-        mock_rel.__aenter__ = AsyncMock(return_value=mock_rel)
-        mock_rel.__aexit__ = AsyncMock(return_value=None)
-        
-        # Mock all external dependencies
-        # Agent needs async context manager support (workflow uses 'async with')
+
         mock_agent = AsyncMock()
         mock_agent.find_website_url.return_value = "https://acme.com"
         mock_agent.run.return_value = {
@@ -393,54 +399,48 @@ class TestEndToEndFlow:
         }
         mock_agent.__aenter__ = AsyncMock(return_value=mock_agent)
         mock_agent.__aexit__ = AsyncMock(return_value=None)
-        
-        with patch('src.universe.workflow.UniverseEnrichmentAgent', return_value=mock_agent), \
-             patch('src.universe.workflow.WebsiteScraper') as MockWebScraper, \
-             patch('src.universe.workflow.CompaniesHouseScraper', return_value=mock_ch), \
-             patch('src.universe.workflow.RelationshipEnricher', return_value=mock_rel), \
-             patch('src.universe.llm_moat_analyzer.LLMMoatAnalyzer') as MockAnalyzer:
-            
-            # Setup scraper mock
+
+        with patch('src.universe.programs.extraction.UniverseEnrichmentAgent', return_value=mock_agent), \
+             patch('src.universe.programs.extraction.WebsiteScraper') as MockWebScraper, \
+             patch('src.universe.programs.extraction.CompaniesHouseScraper', return_value=mock_ch), \
+             patch('src.universe.programs.extraction.OpenCorporatesScraper') as MockOC, \
+             patch('src.universe.moat_scorer.LLMMoatAnalyzer') as MockAnalyzer:
+            mock_oc = AsyncMock()
+            mock_oc.search_companies = AsyncMock(return_value=[])
+            MockOC.return_value = mock_oc
             mock_scraper = AsyncMock()
             mock_scraper.scrape.return_value = {
                 "description": "We make widgets",
                 "keywords_found": {"regulatory": True},
-                "raw_text": "Quality certified widgets. ISO 9001. " * 50
+                "raw_text": "Acme Corp is a leading company. We offer products and services. Quality certified widgets. ISO 9001. " * 5
             }
             MockWebScraper.return_value = mock_scraper
-            
-            # Setup LLM analyzer
+
             mock_analyzer = AsyncMock()
             mock_analyzer.analyze.return_value = {
                 "regulatory": {"score": 60, "evidence": "ISO 9001 certified"},
                 "network": {"score": 20, "evidence": "Some platform features"},
                 "liability": {"score": 0, "evidence": "None"},
                 "physical": {"score": 30, "evidence": "Manufacturing equipment"},
-                "ip": {"score": 0, "evidence": "None"},
+                "geographic": {"score": 0, "evidence": "None"},
                 "reasoning": "Moderate regulatory and physical moats"
             }
             MockAnalyzer.return_value = mock_analyzer
-            
-            # Run enrichment
-            await enrich_companies(test_db, target_ids=[company.id], force=True)
-            
-            test_db.refresh(company)
-            
-            # Verify enrichment results
+
+            await enrich_companies(async_db_session, target_ids=[company.id], force=True)
+
+            await async_db_session.refresh(company)
             assert company.website == "https://acme.com"
-            assert "Leading French manufacturer" in company.description
+            assert "Leading French manufacturer" in (company.description or "")
             assert company.sector == "Manufacturing"
             assert company.employees == 250
             assert company.revenue_gbp == 10000000
             assert company.raw_website_text is not None
             assert len(company.raw_website_text) > 0
-            
-            # Run scoring
-            await run_scoring_pipeline(test_db, countries=["FR"])
-            
-            test_db.refresh(company)
-            
-            # Verify scoring results
+
+            await run_scoring_pipeline(async_db_session, countries=["FR"])
+
+            await async_db_session.refresh(company)
             assert company.moat_score > 0
             assert company.tier is not None
             assert company.moat_analysis is not None

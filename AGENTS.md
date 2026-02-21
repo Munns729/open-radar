@@ -9,7 +9,7 @@ RADAR is an investment intelligence platform that automates the "top of the funn
 
 | Capability | Module | Description | Entry Point |
 | :--- | :--- | :--- | :--- |
-| **Discovery** | `universe` | Find new companies via Companies House & Scrapers | `python -m src.universe.workflow --mode full` |
+| **Discovery** | `universe` | Find new companies via scrapers (no website discovery) | `python -m src.universe.workflow --mode discovery` |
 | **Moat Scoring** | `universe` | Analyze company defensibility (configurable pillars) | `src.universe.moat_scorer.MoatScorer` |
 | **VC Tracking** | `competitive` | Monitor VC LinkedIn/Websites for threats | `python -m src.competitive.workflow` |
 | **Carveout Analysis**| `carveout` | Detect corporate spin-off signals | `python -m src.carveout.workflow` |
@@ -20,6 +20,7 @@ RADAR is an investment intelligence platform that automates the "top of the funn
 | **Target Tracker** | `tracker` | Monitor specific companies for events and alerts | `src.tracker.workflow` (if exists) or `src.tracker` API |
 | **Reporting** | `reporting` | HTML/Excel report generation | `python -m src.reporting` |
 | **Alerts** | `alerts` | Alert engine + notification channels | `src.alerts.alert_engine.AlertEngine` |
+| **Thesis Validator** | `web` + `capital` | Company fit analysis + market hypothesis validation | `GET /api/thesis/*` (UI: `/thesis`) |
 
 ## 3. Thesis Configuration
 
@@ -36,7 +37,7 @@ startup by `src/core/thesis.py` and exposed as the `thesis_config` singleton.
 To change scoring behavior, edit the YAML — no code changes needed.
 
 ## 4. Database Skill Map (SQL Reference)
-The database is located at `data/radar.db` (SQLite).
+The database runs on PostgreSQL (`docker-compose up -d`).
 
 ### Universe (Core Funnel)
 - `companies`: The main table for all discovered entities. Key fields: `moat_score`, `tier`, `revenue_gbp`.
@@ -82,12 +83,22 @@ The database is located at `data/radar.db` (SQLite).
 ## 4. Entry Point Cheat Sheet
 
 ### Build/Update Universe
+Four programs (run independently or in sequence). Orchestrator: `src/universe/workflow.py`; implementations: `src/universe/programs/`.
 ```bash
-# Full discovery and enrichment
-python -m src.universe.workflow --mode full
+# Discovery: Scrapers only — descriptions, revenue, sector (no website discovery)
+python -m src.universe.workflow --mode discovery
 
-# Re-score moats without re-scraping
+# Extraction: Website + CH/OC + LLM enrichment — runs on companies not yet extraction-complete
+python -m src.universe.workflow --mode extraction
+
+# Enrichment: Batch semantic (LLM pillar) enrichment — runs on extraction-complete companies with raw_website_text
 python -m src.universe.workflow --mode enrichment
+
+# Scoring: Moat scoring + tier assignment (no graph) — runs on extraction-complete companies
+python -m src.universe.workflow --mode scoring
+
+# Full pipeline: discovery -> extraction -> enrichment -> scoring
+python -m src.universe.workflow --mode full
 ```
 
 ### Run Intelligence Analytics
@@ -129,6 +140,11 @@ The API serves as the control plane. All endpoints are prefixed with `/api`.
 - **Deals** (`/api/deals`): Workflow triggers for enrichment/scoring.
 - **Search** (`/api/search`): Global search across all entities.
 - **Dashboard** (`/api/dashboard`): Aggregated stats for UI home.
+- **Thesis Validator** (`/api/thesis`): Company fit analysis.
+    - `GET /config`: Full thesis config (pillars, thresholds).
+    - `GET /validate/{company_id}`: Company pillar breakdown, deal screening, scoring history.
+    - `GET /leaderboard`: Top companies by moat score.
+    - `GET /distribution`: Pillar score distribution across universe.
 
 ### Specialized Routers
 - **Tracker** (`/api/tracker`): Watchlists and event monitoring.
@@ -141,7 +157,7 @@ The API serves as the control plane. All endpoints are prefixed with `/api`.
 
 Each module under src/ follows this pattern:
 - `database.py`: SQLAlchemy models (the module's tables)
-- `workflow.py`: Main orchestrator (CLI entry point)
+- `workflow.py`: Main orchestrator (CLI entry point). Universe splits logic into `programs/` (discovery, extraction, enrichment, scoring).
 - `service.py`: Public API logic (clean separation)
 - `__init__.py`: Public exports
 
@@ -167,7 +183,7 @@ Each module under src/ follows this pattern:
 
 ## 8. Common Pitfalls
 
-1. **Async/Sync Mismatch**: `universe/workflow.py` and `capital/workflow.py` use SYNC sessions (session.query()) inside async function signatures. Do NOT mix async session calls into these modules without a full refactor. `tracker/` and `deal_intelligence/` are properly async.
+1. **Async/Sync Mismatch**: `universe/programs/*` and the universe workflow use **async** sessions (`get_async_db()`). `capital/workflow.py` uses SYNC sessions. Do NOT mix async session calls into capital workflow without a full refactor. `tracker/` and `deal_intelligence/` are properly async.
 
 2. **Core Models Separation**: `src/core/models.py` contains ONLY Enums (MoatType, CompanyTier, ThreatLevel). It does NOT contain database models or dataclasses.
    - **Enums**: `src/core/models.py`
@@ -176,10 +192,8 @@ Each module under src/ follows this pattern:
 
 3. **Name Matching**: Always use `normalize_name()` from `core/utils.py` when comparing company names. Direct string comparison will miss "Dassault Systèmes" vs "Dassault Systemes".
 
-4. **Database Location**: All modules share a single SQLite database at `data/radar.db`. 
-   Use `get_db()` / `get_sync_db()` for all database access. The legacy `get_universe_db()` 
-   and `get_sync_universe_db()` functions still exist as aliases but are deprecated — 
-   use the primary functions for new code.
+4. **Database Location**: All modules share a single PostgreSQL database (run `docker-compose up -d`). 
+   Use `get_db()` / `get_sync_db()` for all database access. SQLite is not supported.
 
 5. **Router Pattern**: All new API endpoints go in a dedicated router file under `src/web/routers/`, then register it in `__init__.py`. Never add endpoints directly to `app.py`.
 

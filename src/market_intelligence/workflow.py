@@ -67,38 +67,42 @@ async def run_intel_scan():
     logger.info("Daily scan complete.")
 
 async def generate_market_briefing():
-    """Weekly workflow."""
+    """Weekly workflow. Generates briefing, saves locally, optionally emails."""
     if not async_session_factory:
-       return
+        logger.error("No session factory. Cannot generate briefing.")
+        return None
 
     async with async_session_factory() as session:
         gen = WeeklyBriefingGenerator(session)
-        briefing = await gen.generate_briefing(date.today())
+        briefing = await gen.generate_briefing()
         
-        # Send Email
-        subject = f"Market Intelligence Briefing - Week of {briefing.week_starting}"
-        html_content = f"""
-        <h1>Market Intelligence Briefing</h1>
-        <p><strong>Date:</strong> {briefing.week_starting}</p>
+        # Save markdown locally (always works, no external deps)
+        from pathlib import Path
+        md_content = gen.render_markdown(briefing)
         
-        <h2>Executive Summary</h2>
-        <p>{briefing.executive_summary}</p>
+        output_dir = Path("outputs")
+        output_dir.mkdir(exist_ok=True)
         
-        <h2>Top Regulatory Changes</h2>
-        <ul>{''.join([f'<li>{item}</li>' for item in (briefing.top_regulatory_changes or [])])}</ul>
+        # Write timestamped version
+        ts_path = output_dir / f"briefing_{briefing.week_starting}.md"
+        ts_path.write_text(md_content)
+        logger.info(f"Briefing saved to {ts_path}")
         
-        <h2>Emerging Trends</h2>
-        <ul>{''.join([f'<li>{item}</li>' for item in (briefing.emerging_trends or [])])}</ul>
+        # Overwrite latest_briefing.md for quick access
+        latest_path = Path("latest_briefing.md")
+        latest_path.write_text(md_content)
+        logger.info(f"Latest briefing updated: {latest_path}")
         
-        <h2>Thesis Implications</h2>
-        <p>{briefing.thesis_implications}</p>
+        # Email if configured
+        if email_client.sg:
+            html_content = gen.render_html(briefing)
+            subject = f"RADAR Weekly Briefing — {briefing.week_starting}"
+            from src.core.config import settings
+            to_addr = settings.admin_email or settings.sendgrid_from_email
+            if to_addr:
+                email_client.send_email(to_addr, subject, html_content)
         
-        <h2>Action Items</h2>
-        <ul>{''.join([f'<li>{item}</li>' for item in (briefing.action_items or [])])}</ul>
-        """
-        
-        # Send to team (placeholder email)
-        email_client.send_email("team@radar-pe.com", subject, html_content)
+        return briefing
 
 
 if __name__ == "__main__":

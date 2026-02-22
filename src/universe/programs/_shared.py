@@ -70,10 +70,10 @@ async def save_companies(session, companies_data: List[Dict], source: str) -> in
         existing_companies = list(result.scalars().all())
 
     for data in companies_data:
-        # Pre-Enrichment Filter (Lightweight)
-        should_proc, reason = PreEnrichmentFilter.should_process(data)
-        if not should_proc:
-            pass
+        # Soft filter: compute exclusion reason (e.g. revenue too high, PLC name).
+        # We still persist the company so the DB reflects everything discovered; the
+        # reason is stored in exclusion_reason and the company is skipped in enrichment.
+        _, reason = PreEnrichmentFilter.should_process(data)
 
         existing = None
 
@@ -190,7 +190,7 @@ async def _resolve_revenue_with_source(company, llm_revenue: int, ch_scraper, oc
         infer_eu_band_from_employees,
         infer_eu_band_from_officers_count,
     )
-    from src.universe.scrapers.companies_house_scraper import CompaniesHouseScraper
+    from src.universe.scrapers import CompaniesHouseScraper
 
     revenue = None
     source = None

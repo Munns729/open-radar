@@ -36,9 +36,11 @@ class CompanyModel(Base):
     sub_sector = Column(String(100), index=True) # NEW: More granular sector
     raw_website_text = Column(Text, nullable=True)  # Full website content for LLM analysis
     semantic_enriched_at = Column(DateTime, nullable=True)
+    extraction_complete_at = Column(DateTime, nullable=True)  # Set when Extraction & Enrichment has run
     
     # Financials
     revenue_gbp = Column(BigInteger)
+    revenue_source = Column(String(50), nullable=True)  # ch_filing, ch_band_midpoint, llm_website, eu_band_midpoint, other_registry
     ebitda_gbp = Column(BigInteger)
     ebitda_margin = Column(DECIMAL(5, 2))
     gross_margin = Column(DECIMAL(5, 2))
@@ -154,18 +156,8 @@ class ScoringEvent(Base):
     def __repr__(self):
         return f"<ScoringEvent(company_id={self.company_id}, score={self.moat_score}, delta={self.score_delta})>"
 
-# Late-binding relationships to resolve circular dependencies and mapping order issues
-CompanyModel.certifications = relationship(
-    "CertificationModel",
-    back_populates="company",
-    cascade="all, delete-orphan"
-)
-
-CertificationModel.company = relationship(
-    "CompanyModel",
-    back_populates="certifications"
-)
-
+# Late-binding relationships: CompanyRelationshipModel must be fully defined before
+# these can be declared, so they cannot live inside the CompanyModel class body.
 CompanyModel.relationships_as_a = relationship(
     "CompanyRelationshipModel",
     primaryjoin=CompanyModel.id == CompanyRelationshipModel.company_a_id,

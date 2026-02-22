@@ -12,8 +12,6 @@ The `scan_capital_flows` function orchestrates the intelligence gathering:
     -   Visits the websites of discovered PE firms.
     -   Scrapes their "Portfolio" pages to list all current and past investments.
     -   Extracts sector, description, and exit status.
-3.  **Thesis Validation (`ThesisValidator`)**:
-    -   Analyzes the aggregated data to see if market activity aligns with RADAR's investment theses.
 
 ## 2. Key Data Models (`src.capital.database`)
 

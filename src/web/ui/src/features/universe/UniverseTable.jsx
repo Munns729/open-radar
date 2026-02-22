@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip';
-import { Download, Search, Filter, HelpCircle, Loader2, X, Info, CheckCircle2, AlertCircle, BarChart3 as ChartIcon, MapPin } from 'lucide-react';
+import { Download, Search, Filter, HelpCircle, Loader2, X, Info, CheckCircle2, AlertCircle, BarChart3 as ChartIcon, MapPin, Sparkles, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     PieChart, Pie, Cell,
@@ -29,9 +29,12 @@ export default function UniverseTable() {
         country: '',
         minMoat: '',
         isEnriched: '',
-        isScored: ''
+        isScored: '',
+        discoveredSince: '',
+        enrichedSince: ''
     });
     const [stats, setStats] = useState(null);
+    const [recentStats, setRecentStats] = useState(null);
 
     // Poll for scan status
     useEffect(() => {
@@ -58,7 +61,9 @@ export default function UniverseTable() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [companiesResponse, statsResponse] = await Promise.all([
+            const discoveredHours = filters.discoveredSince ? parseInt(filters.discoveredSince) : undefined;
+            const enrichedHours = filters.enrichedSince ? parseInt(filters.enrichedSince) : undefined;
+            const [companiesResponse, statsResponse, recentStatsResponse] = await Promise.all([
                 api.getCompanies({
                     limit: 100,
                     search: searchTerm || undefined,
@@ -67,12 +72,16 @@ export default function UniverseTable() {
                     country: filters.country || undefined,
                     min_moat: filters.minMoat ? parseInt(filters.minMoat) : undefined,
                     is_enriched: filters.isEnriched === 'true' ? true : filters.isEnriched === 'false' ? false : undefined,
-                    is_scored: filters.isScored === 'true' ? true : filters.isScored === 'false' ? false : undefined
+                    is_scored: filters.isScored === 'true' ? true : filters.isScored === 'false' ? false : undefined,
+                    discovered_since_hours: discoveredHours,
+                    enriched_since_hours: enrichedHours
                 }),
-                api.getUniverseStats()
+                api.getUniverseStats(),
+                api.getUniverseRecentStats()
             ]);
             setCompanies(companiesResponse.data || companiesResponse);
             setStats(statsResponse);
+            setRecentStats(recentStatsResponse);
         } catch (error) {
             console.error("Failed to fetch data", error);
         } finally {
@@ -98,7 +107,9 @@ export default function UniverseTable() {
             country: '',
             minMoat: '',
             isEnriched: '',
-            isScored: ''
+            isScored: '',
+            discoveredSince: '',
+            enrichedSince: ''
         });
         setSearchTerm('');
     };
@@ -139,6 +150,69 @@ export default function UniverseTable() {
     return (
         <div className="space-y-6">
             <Methodology />
+
+            {/* Recent Discovery & Enrichment Stats */}
+            {recentStats && (
+                <Card className="border-border/50 bg-card/60 backdrop-blur-xl">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-primary" />
+                            Recently Added
+                        </CardTitle>
+                        <CardDescription>
+                            Companies discovered or enriched in the last 24h, 5 days, 30 days. Click to filter.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                            <button
+                                onClick={() => handleFilterChange('discoveredSince', filters.discoveredSince === '24' ? '' : '24')}
+                                className={`p-3 rounded-lg border text-left transition-colors ${filters.discoveredSince === '24' ? 'border-primary bg-primary/10' : 'border-border-subtle hover:bg-surface-hover'}`}
+                            >
+                                <p className="text-xs text-muted-foreground uppercase">Discovered 24h</p>
+                                <p className="text-xl font-bold text-text-pri">{recentStats.discovered_24h ?? '—'}</p>
+                            </button>
+                            <button
+                                onClick={() => handleFilterChange('discoveredSince', filters.discoveredSince === '120' ? '' : '120')}
+                                className={`p-3 rounded-lg border text-left transition-colors ${filters.discoveredSince === '120' ? 'border-primary bg-primary/10' : 'border-border-subtle hover:bg-surface-hover'}`}
+                            >
+                                <p className="text-xs text-muted-foreground uppercase">Discovered 5d</p>
+                                <p className="text-xl font-bold text-text-pri">{recentStats.discovered_5d ?? '—'}</p>
+                            </button>
+                            <button
+                                onClick={() => handleFilterChange('discoveredSince', filters.discoveredSince === '720' ? '' : '720')}
+                                className={`p-3 rounded-lg border text-left transition-colors ${filters.discoveredSince === '720' ? 'border-primary bg-primary/10' : 'border-border-subtle hover:bg-surface-hover'}`}
+                            >
+                                <p className="text-xs text-muted-foreground uppercase">Discovered 30d</p>
+                                <p className="text-xl font-bold text-text-pri">{recentStats.discovered_30d ?? '—'}</p>
+                            </button>
+                            <button
+                                onClick={() => handleFilterChange('enrichedSince', filters.enrichedSince === '24' ? '' : '24')}
+                                className={`p-3 rounded-lg border text-left transition-colors ${filters.enrichedSince === '24' ? 'border-primary bg-primary/10' : 'border-border-subtle hover:bg-surface-hover'}`}
+                            >
+                                <p className="text-xs text-muted-foreground uppercase flex items-center gap-1">
+                                    <RefreshCw className="h-3 w-3" /> Enriched 24h
+                                </p>
+                                <p className="text-xl font-bold text-text-pri">{recentStats.enriched_24h ?? '—'}</p>
+                            </button>
+                            <button
+                                onClick={() => handleFilterChange('enrichedSince', filters.enrichedSince === '120' ? '' : '120')}
+                                className={`p-3 rounded-lg border text-left transition-colors ${filters.enrichedSince === '120' ? 'border-primary bg-primary/10' : 'border-border-subtle hover:bg-surface-hover'}`}
+                            >
+                                <p className="text-xs text-muted-foreground uppercase">Enriched 5d</p>
+                                <p className="text-xl font-bold text-text-pri">{recentStats.enriched_5d ?? '—'}</p>
+                            </button>
+                            <button
+                                onClick={() => handleFilterChange('enrichedSince', filters.enrichedSince === '720' ? '' : '720')}
+                                className={`p-3 rounded-lg border text-left transition-colors ${filters.enrichedSince === '720' ? 'border-primary bg-primary/10' : 'border-border-subtle hover:bg-surface-hover'}`}
+                            >
+                                <p className="text-xs text-muted-foreground uppercase">Enriched 30d</p>
+                                <p className="text-xl font-bold text-text-pri">{recentStats.enriched_30d ?? '—'}</p>
+                            </button>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             <Card className="border-border/50 bg-card/60 backdrop-blur-xl shadow-2xl">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
@@ -276,6 +350,30 @@ export default function UniverseTable() {
                                     />
                                 </div>
                                 <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase text-muted-foreground">Discovered</label>
+                                    <Select
+                                        value={filters.discoveredSince}
+                                        onChange={(e) => handleFilterChange('discoveredSince', e.target.value)}
+                                    >
+                                        <option value="">All time</option>
+                                        <option value="24">Last 24 hours</option>
+                                        <option value="120">Last 5 days</option>
+                                        <option value="720">Last 30 days</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase text-muted-foreground">Enriched</label>
+                                    <Select
+                                        value={filters.enrichedSince}
+                                        onChange={(e) => handleFilterChange('enrichedSince', e.target.value)}
+                                    >
+                                        <option value="">All time</option>
+                                        <option value="24">Last 24 hours</option>
+                                        <option value="120">Last 5 days</option>
+                                        <option value="720">Last 30 days</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
                                     <label className="text-xs font-semibold uppercase text-muted-foreground">Enrichment</label>
                                     <Select
                                         value={filters.isEnriched}
@@ -383,7 +481,12 @@ export default function UniverseTable() {
                                             <TableCell><PillarCell analysis={cls.moat_analysis} type="liability" /></TableCell>
                                             <TableCell><PillarCell analysis={cls.moat_analysis} type="physical" /></TableCell>
                                             <TableCell className="text-center font-bold text-white">
-                                                {cls.moat_score > 0 ? cls.moat_score : '-'}
+                                                {cls.moat_score > 0
+                                                    ? cls.moat_score
+                                                    : cls.moat_analysis?.scoring_status === 'insufficient_data'
+                                                        ? <span className="text-muted-foreground font-normal text-xs">N/A</span>
+                                                        : '-'
+                                                }
                                             </TableCell>
                                         </TableRow>
                                     ))
@@ -558,6 +661,16 @@ function EnrichmentStatus({ company }) {
             <Badge variant="outline" className="bg-success/10 text-success border-success/20 gap-1">
                 <CheckCircle2 className="h-3 w-3" />
                 Scored
+            </Badge>
+        );
+    }
+
+    const isInsufficient = company.moat_analysis?.scoring_status === 'insufficient_data';
+    if (isInsufficient) {
+        return (
+            <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-muted gap-1">
+                <AlertCircle className="h-3 w-3" />
+                No Data
             </Badge>
         );
     }

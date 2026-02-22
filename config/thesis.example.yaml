@@ -175,6 +175,35 @@ business_filters:
   negative_keyword_penalty: 5
 
 # =============================================================================
+# PIPELINE FILTERS (pre-enrichment exclusions)
+# Applied before expensive enrichment/scoring. Customise for your thesis.
+# =============================================================================
+pipeline_filters:
+  exclude_sectors:
+    - Biotechnology
+    - Pharmaceuticals
+    - Mining
+    - Oil & Gas
+    - Real Estate
+    - Consumer Goods
+  public_listing_keywords:
+    - "publicly traded"
+    - "nasdaq:"
+    - "nyse:"
+    - "lse:"
+    - "euronext:"
+    - "stock exchange"
+    - "ticker symbol"
+    - "fortune 500"
+    - "ftse 100"
+    - "cac 40"
+    - "dax 30"
+  max_revenue_exclude: 500_000_000   # Exclude companies above £500M
+  exclude_plc_by_name: true          # Exclude UK PLCs by name
+  enrichment_skip_days: 0.5          # Skip within 12h (use 7 for weekly cadence)
+  min_semantic_enrichment_text_chars: 2500  # Zone 2 gate: min website text length for Zone 3 semantic enrichment
+
+# =============================================================================
 # DEAL SCREENING (informational, not part of moat score)
 # =============================================================================
 deal_screening:

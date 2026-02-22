@@ -4,7 +4,7 @@ Orchestrates the scraping, analysis, and reporting pipeline.
 """
 import asyncio
 import logging
-from typing import List
+from typing import List, Optional
 from sqlalchemy import select, func
 from src.core.database import engine, get_async_db
 
@@ -12,17 +12,47 @@ from src.core.config import settings
 from src.capital.database import Base, PEFirmModel, PEInvestmentModel
 from src.capital.scrapers.sec_edgar import SECEdgarAgent
 from src.capital.scrapers.pe_websites import PEWebsiteAgent
-from src.capital.analyzers.thesis_validator import ThesisValidator
-
+from src.capital.scrapers.fca_register import FCARegisterScraper
+from src.capital.scrapers.imergea_atlas import IMERGEAAtlasScraper
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-async def scan_capital_flows():
+# Default sources: SEC (US) + FCA (UK) + IMERGEA (Europe) when configured
+DEFAULT_SOURCES = ["SEC", "FCA", "IMERGEA"]
+
+
+async def _store_firms(session, firms_data: List[dict], strategy: str, default_country: str) -> int:
+    """Store discovered firms, deduplicating by name. Returns count of new firms added."""
+    term_new = 0
+    for firm in firms_data:
+        firm_name = firm.get("name") or firm.get("Name")
+        if not firm_name:
+            continue
+        hq_country = firm.get("hq_country") or firm.get("location") or firm.get("Location") or default_country
+        result = await session.execute(select(PEFirmModel).where(PEFirmModel.name == firm_name))
+        existing = result.scalar_one_or_none()
+        if not existing:
+            logger.info("Adding NEW firm: %s", firm_name)
+            session.add(PEFirmModel(
+                name=firm_name,
+                hq_country=hq_country,
+                aum_usd=0,
+                investment_strategy=strategy,
+            ))
+            term_new += 1
+    await session.commit()
+    return term_new
+
+
+async def scan_capital_flows(sources: Optional[List[str]] = None):
     """
     Main entry point for capital flows scanning.
+    sources: List of "SEC", "FCA", "IMERGEA" - which discovery sources to run.
+    Defaults to all three (SEC for US, FCA for UK, IMERGEA for Europe).
     """
-    logger.info("Starting Capital Flows Scan...")
+    sources = sources or DEFAULT_SOURCES
+    logger.info("Starting Capital Flows Scan (sources: %s)...", sources)
     
     # 1. Database Setup
     async with engine.begin() as conn:
@@ -30,54 +60,45 @@ async def scan_capital_flows():
     
     async with get_async_db() as session:
         try:
-            # 2. Scrape SEC for PE Firms (Multi-Keyword)
-            logger.info("Scraping SEC for PE Firms...")
-            sec_agent = SECEdgarAgent(headless=True, model_name=settings.kimi_model)
-            
-            SEARCH_TERMS = [
-                # "Private Equity", # Skip common one for now to verify expansion
-                "Growth Equity",
-                "Venture Capital" 
-            ]
-            
             total_new = 0
-            for term in SEARCH_TERMS:
-                logger.info(f"Scanning for term: '{term}'...")
+
+            # 2a. SEC (US) - PE firm discovery
+            if "SEC" in sources:
+                logger.info("Scraping SEC for US PE Firms...")
+                sec_agent = SECEdgarAgent(headless=True, model_name=settings.browsing_model)
+                for term in ["Growth Equity", "Venture Capital"]:
+                    try:
+                        firms_data = await sec_agent.run(search_term=term)
+                        term_new = await _store_firms(session, firms_data, term, default_country="US")
+                        total_new += term_new
+                    except Exception as e:
+                        logger.error(f"SEC term '{term}' failed: {e}")
+                        await session.rollback()
+
+            # 2b. FCA Register (UK) - PE firm discovery
+            if "FCA" in sources:
+                logger.info("Scraping FCA Register for UK PE Firms...")
                 try:
-                    firms_data = await sec_agent.run(search_term=term)
-                    
-                    logger.info(f"Term '{term}' returned {len(firms_data)} raw results.")
-                    
-                    # Store firms
-                    term_new = 0
-                    for firm in firms_data:
-                        firm_name = firm.get('name')
-                        if not firm_name: continue
-                        
-                        # Robust upsert
-                        # Check partial match/case insensitive? For now exact match on name.
-                        result = await session.execute(select(PEFirmModel).where(PEFirmModel.name == firm_name))
-                        existing = result.scalar_one_or_none()
-                        
-                        if not existing:
-                            logger.info(f"Adding NEW firm: {firm_name}")
-                            new_firm = PEFirmModel(
-                                name=firm_name,
-                                hq_country=firm.get('location', 'US'), # Map location to country loosely
-                                aum_usd=0, # Default
-                                investment_strategy=term 
-                            )
-                            session.add(new_firm)
-                            term_new += 1
-                    
-                    await session.commit()
-                    logger.info(f"Committed {term_new} new firms for '{term}'.")
+                    fca_scraper = FCARegisterScraper()
+                    firms_data = fca_scraper.scrape(limit_per_term=30)
+                    term_new = await _store_firms(session, firms_data, "FCA-UK", default_country="UK")
                     total_new += term_new
-                    
                 except Exception as e:
-                    logger.error(f"Error processing term '{term}': {e}")
-                    await session.rollback() # Rollback only this term's batch
-                
+                    logger.warning("FCA Register skipped or failed: %s", e)
+                    await session.rollback()
+
+            # 2c. IMERGEA Atlas (Europe) - PE firm discovery
+            if "IMERGEA" in sources:
+                logger.info("Scraping IMERGEA Atlas for European PE Firms...")
+                try:
+                    imergea_agent = IMERGEAAtlasScraper(headless=True, model_name=settings.browsing_model)
+                    firms_data = await imergea_agent.run(region="Europe", firm_type="PE", limit=80)
+                    term_new = await _store_firms(session, firms_data, "IMERGEA-EU", default_country="EU")
+                    total_new += term_new
+                except Exception as e:
+                    logger.warning("IMERGEA Atlas skipped or failed: %s", e)
+                    await session.rollback()
+
             logger.info(f"Total new firms added: {total_new}")
             
             if total_new == 0: # If scrape failed, verify DB content
@@ -97,8 +118,8 @@ async def scan_capital_flows():
             
             from src.capital.scrapers.url_finder import UrlFinderAgent
             
-            url_agent = UrlFinderAgent(headless=True, model_name=settings.kimi_model)
-            pe_agent = PEWebsiteAgent(headless=True, model_name=settings.kimi_model) # Headless for speed? or False for complex sites?
+            url_agent = UrlFinderAgent(headless=True, model_name=settings.browsing_model)
+            pe_agent = PEWebsiteAgent(headless=True, model_name=settings.browsing_model) # Headless for speed? or False for complex sites?
             # Use headless=False if debugging, but True for prod
             
             for firm in firms_to_enrich:
@@ -132,19 +153,20 @@ async def scan_capital_flows():
                     except Exception as e:
                         logger.error(f"Failed to scrape {firm.website}: {e}")
             
-            # 4. Run Thesis Validation
-            logger.info("Running Thesis Validation...")
-            validator = ThesisValidator(session)
-            report = await validator.generate_report()
-            
-            logger.info("Scan Complete. Thesis Report:")
-            for item in report:
-                logger.info(f"{item['hypothesis']}: {item['supports_thesis']}")
-                
+            logger.info("Scan complete.")
         except Exception as e:
             logger.error(f"Scan failed: {e}")
             await session.rollback()
 
 if __name__ == "__main__":
-    # Example usage
-    asyncio.run(scan_capital_flows())
+    import argparse
+    parser = argparse.ArgumentParser(description="Capital Flows Scanner")
+    parser.add_argument(
+        "--sources",
+        nargs="+",
+        default=DEFAULT_SOURCES,
+        choices=["SEC", "FCA", "IMERGEA"],
+        help="Discovery sources: SEC (US), FCA (UK), IMERGEA (Europe). Default: all",
+    )
+    args = parser.parse_args()
+    asyncio.run(scan_capital_flows(sources=args.sources))

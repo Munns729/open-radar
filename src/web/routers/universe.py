@@ -1,11 +1,12 @@
 """Universe router — company discovery, graph, and scanning."""
 
 import logging
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, desc, or_, func
+from sqlalchemy import select, desc, or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
@@ -67,6 +68,8 @@ async def get_companies(
     min_moat: Optional[int] = None,
     is_enriched: Optional[bool] = None,
     is_scored: Optional[bool] = None,
+    discovered_since_hours: Optional[int] = None,
+    enriched_since_hours: Optional[int] = None,
     session: AsyncSession = Depends(get_db),
 ):
     """List companies in the universe with advanced filters."""
@@ -96,7 +99,21 @@ async def get_companies(
     if is_scored is True:
         filters.append(CompanyModel.moat_score > 0)
     elif is_scored is False:
-        filters.append(CompanyModel.moat_score == 0)
+        # "not scored" = score is 0, NULL (insufficient data), or has insufficient_data status
+        filters.append(or_(
+            CompanyModel.moat_score.is_(None),
+            CompanyModel.moat_score == 0,
+        ))
+
+    now = datetime.now(timezone.utc)
+    if discovered_since_hours is not None:
+        cutoff = (now - timedelta(hours=discovered_since_hours)).replace(tzinfo=None)
+        filters.append(CompanyModel.created_at >= cutoff)
+    if enriched_since_hours is not None:
+        cutoff = (now - timedelta(hours=enriched_since_hours)).replace(tzinfo=None)
+        filters.append(CompanyModel.last_updated >= cutoff)
+        filters.append(CompanyModel.description.isnot(None))
+        filters.append(~CompanyModel.description.startswith("Discovered on"))
 
     # Get total count
     count_stmt = select(func.count()).select_from(CompanyModel)
@@ -150,11 +167,15 @@ async def get_scoring_history(
     result = await session.execute(stmt)
     events = result.scalars().all()
     
+    moat_analysis = company.moat_analysis or {}
+    scoring_status = moat_analysis.get("scoring_status") if isinstance(moat_analysis, dict) else None
+
     return {
         "company_id": company_id,
         "company_name": company.name,
         "current_score": company.moat_score,
         "current_tier": company.tier.value if company.tier else None,
+        "scoring_status": scoring_status,  # "insufficient_data" or None (scored)
         "total_events": len(events),
         "events": [e.to_dict() for e in events],
     }
@@ -236,6 +257,36 @@ async def get_universe_graph(
     return StandardResponse(data={"nodes": nodes, "links": links})
 
 
+@router.get("/recent-stats", response_model=StandardResponse[dict], summary="Recently Discovered & Enriched")
+async def get_recent_stats(session: AsyncSession = Depends(get_db)):
+    """Count companies discovered or enriched in the last 24h, 5 days, 30 days."""
+    now = datetime.now(timezone.utc)
+    windows = [
+        ("24h", timedelta(hours=24)),
+        ("5d", timedelta(days=5)),
+        ("30d", timedelta(days=30)),
+    ]
+    result = {}
+    for label, delta in windows:
+        cutoff = now - delta
+        # Naive datetime for DB columns that may be naive
+        cutoff_naive = cutoff.replace(tzinfo=None) if cutoff.tzinfo else cutoff
+        discovered_stmt = select(func.count()).select_from(CompanyModel).where(CompanyModel.created_at >= cutoff_naive)
+        discovered_res = await session.execute(discovered_stmt)
+        result[f"discovered_{label}"] = discovered_res.scalar() or 0
+        # Enriched = last_updated in window AND has real description (not placeholder)
+        enriched_stmt = (
+            select(func.count())
+            .select_from(CompanyModel)
+            .where(CompanyModel.last_updated >= cutoff_naive)
+            .where(CompanyModel.description.isnot(None))
+            .where(~CompanyModel.description.startswith("Discovered on"))
+        )
+        enriched_res = await session.execute(enriched_stmt)
+        result[f"enriched_{label}"] = enriched_res.scalar() or 0
+    return StandardResponse(data=result)
+
+
 @router.get("/status", summary="Get Universe Scan Status")
 async def get_status():
     """Get the current status of the universe scanner."""
@@ -314,8 +365,11 @@ async def get_stats(session: AsyncSession = Depends(get_db)):
     e_s_stmt = select(func.count()).select_from(CompanyModel).where(CompanyModel.description.isnot(None), CompanyModel.moat_score > 0)
     e_s_res = await session.execute(e_s_stmt)
     
-    # Enriched & Unscored
-    e_u_stmt = select(func.count()).select_from(CompanyModel).where(CompanyModel.description.isnot(None), CompanyModel.moat_score == 0)
+    # Enriched & Unscored (includes NULL/insufficient_data)
+    e_u_stmt = select(func.count()).select_from(CompanyModel).where(
+        CompanyModel.description.isnot(None),
+        or_(CompanyModel.moat_score.is_(None), CompanyModel.moat_score == 0),
+    )
     e_u_res = await session.execute(e_u_stmt)
     
     # Not Enriched (Pending)

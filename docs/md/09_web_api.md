@@ -9,7 +9,8 @@ Built with **FastAPI**, the backend orchestrates all data retrieval and workflow
 ### Key Endpoints
 
 #### Universe
--   `GET /api/universe/companies`: Filterable list of discovered companies.
+-   `GET /api/universe/companies`: Filterable list of discovered companies. Query params include `is_scored` (true = moat_score > 0, false = moat_score NULL or 0, i.e. unscored or insufficient data).
+-   `GET /api/universe/companies/{id}/scoring-history`: Scoring audit trail for a company; response includes `scoring_status` (e.g. `"insufficient_data"` when not scored due to lack of content).
 -   `POST /api/universe/scan`: Trigger a new discovery workflow (Background Task).
 -   `GET /api/universe/graph`: Returns nodes/links for the relationship graph visualization.
 
@@ -23,6 +24,14 @@ Built with **FastAPI**, the backend orchestrates all data retrieval and workflow
 
 #### Competitive
 -   `GET /api/competitive/feed`: Stream of VC funding announcements.
+
+#### Thesis Validator
+-   `GET /api/thesis/config`: Full thesis config (pillars, thresholds).
+-   `GET /api/thesis/validate/{company_id}`: Company pillar breakdown, deal screening, scoring history.
+-   `GET /api/thesis/leaderboard`: Top companies by moat score.
+-   `GET /api/thesis/distribution`: Pillar score distribution across universe.
+
+See **[thesis_validator.md](./thesis_validator.md)** for full documentation.
 
 ## 2. Frontend (`src.web.ui`)
 

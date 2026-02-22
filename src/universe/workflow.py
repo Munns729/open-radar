@@ -131,7 +131,8 @@ async def _print_summary(session, tier_report):
     if tier_report and tier_report.has_changes:
         print("\n--- TIER CHANGES ---")
         for change in tier_report.changes:
-            print(f"  {change.summary()}")
+            summary_str = change.summary().replace("\u2b06\ufe0f", "[^]").replace("\u2b07\ufe0f", "[v]")
+            print(f"  {summary_str}")
 
         tier_md = tier_report.render_markdown()
         tier_path = Path("outputs") / f"tier_changes_{datetime.now():%Y%m%d_%H%M%S}.md"

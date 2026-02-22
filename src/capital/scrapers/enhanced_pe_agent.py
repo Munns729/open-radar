@@ -110,7 +110,7 @@ async def research_pe_website():
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("Research")
     
-    agent = EnhancedPEWebsiteAgent(headless=True, model_name=settings.kimi_model)
+    agent = EnhancedPEWebsiteAgent(headless=True, model_name=settings.browsing_model)
     
     logger.info("Testing standard extraction...")
     standard_data = await agent.run("https://www.silverlake.com/", deep_dive=False)

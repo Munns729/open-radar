@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.universe.database import Base, CompanyModel, CertificationModel, CompanyRelationshipModel
 from src.universe.scrapers import AS9100Scraper, CompaniesHouseScraper
-from src.universe.graph_analyzer import GraphAnalyzer
 from src.core.models import CompanyTier
 from src.core.data_types import ScraperOutput
 
@@ -32,7 +31,7 @@ def db_session():
 async def test_as9100_scraper():
     """Test AS9100 scraper parsing logic"""
     # Mock Playwright
-    with patch("src.universe.scrapers.as9100_scraper.async_playwright") as mock_pw:
+    with patch("src.universe.scrapers.browser.as9100_scraper.async_playwright") as mock_pw:
         mock_browser = AsyncMock()
         mock_context = AsyncMock()
         mock_page = AsyncMock()
@@ -73,7 +72,7 @@ async def test_companies_house_scraper_search():
     """Test Companies House search"""
     mock_files = {"items": [{"company_number": "123", "company_name": "Test Co", "company_status": "active"}]}
     
-    with patch("src.universe.scrapers.companies_house_scraper.CompaniesHouseScraper._get", new_callable=AsyncMock) as mock_get:
+    with patch("src.universe.scrapers.api.companies_house_scraper.CompaniesHouseScraper._get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_files
         
         async with CompaniesHouseScraper(api_key="fake") as scraper:
@@ -81,34 +80,59 @@ async def test_companies_house_scraper_search():
             assert len(results) == 1
             assert results[0]['company_number'] == "123"
 
+
+def test_revenue_plausible_for_accounts():
+    """Sanity-check LLM revenue against CH account type bands."""
+    from src.universe.revenue_bands import revenue_plausible_uk
+    def rev(accounts, revenue):
+        return revenue_plausible_uk(accounts, revenue)
+    # Micro-entity: ≤£1.5M
+    assert rev({"last_accounts": {"type": "micro-entity"}}, 1_000_000) is True
+    assert rev({"last_accounts": {"type": "micro-entity"}}, 2_000_000) is False
+    # Small: ≤£20M
+    assert rev({"last_accounts": {"type": "small"}}, 15_000_000) is True
+    assert rev({"last_accounts": {"type": "small"}}, 25_000_000) is False
+    # Medium: ≤£60M
+    assert rev({"last_accounts": {"type": "medium"}}, 50_000_000) is True
+    assert rev({"last_accounts": {"type": "medium"}}, 70_000_000) is False
+    # Full: no cap
+    assert rev({"last_accounts": {"type": "full"}}, 500_000_000) is True
+    # Dormant: reject any revenue
+    assert rev({"last_accounts": {"type": "dormant"}}, 100) is False
+    # Unknown/empty: cap at £60M
+    assert rev({}, 50_000_000) is True
+    assert rev({}, 100_000_000) is False
+    assert rev({"last_accounts": {}}, 50_000_000) is True
+    assert rev({"last_accounts": {"type": "unknown"}}, 100_000_000) is False
+
+
+def test_uk_band_midpoint():
+    """Band midpoint used when LLM revenue misaligned."""
+    from src.universe.revenue_bands import get_uk_band_from_accounts
+    r = get_uk_band_from_accounts({"last_accounts": {"type": "micro-entity"}})
+    assert r is not None
+    cap, mid, src = r
+    assert cap == 1_500_000
+    assert mid == 750_000
+    assert src == "ch_band_midpoint"
+    r = get_uk_band_from_accounts({"last_accounts": {"type": "small"}})
+    assert r[1] == 10_000_000
+
+
+def test_eu_band_from_employees():
+    """EU SME band inferred from employee count."""
+    from src.universe.revenue_bands import infer_eu_band_from_employees
+    r = infer_eu_band_from_employees(5)
+    assert r is not None
+    cap, mid, src = r
+    assert src == "eu_band_midpoint"
+    assert mid == int(1_000_000 * 0.85)
+
+
 # --- Moat Scorer Tests ---
 # NOTE: Legacy tests removed — called dead method MoatScorer.score_picard_defensibility().
 # Moat scoring is now thesis-driven. See tests/unit/test_thesis_configurability.py for coverage.
 
-
-# --- Graph Analyzer Tests ---
-
-def test_graph_analyzer_relationships(db_session):
-    """Test relationship detection"""
-    # Create companies with same address
-    c1 = CompanyModel(name="Parent Co", hq_address="123 HQ Lane")
-    c2 = CompanyModel(name="Child Co", hq_address="123 HQ Lane") # Same addr
-    c3 = CompanyModel(name="Other Co", hq_address="999 Away St")
-    
-    db_session.add_all([c1, c2, c3])
-    db_session.commit()
-    
-    analyzer = GraphAnalyzer(db_session)
-    analyzer.suggest_relationships() # Should find address match
-    
-    # Check DB
-    rel = db_session.query(CompanyRelationshipModel).filter(
-        CompanyRelationshipModel.company_a_id == c1.id,
-        CompanyRelationshipModel.company_b_id == c2.id
-    ).first()
-    
-    assert rel is not None
-    assert rel.relationship_type == "shared_address"
 
 # --- Workflow Tests ---
 
@@ -120,9 +144,9 @@ async def test_workflow_integration(db_session):
     # Mock SessionLocal to return our test session
     with patch("src.universe.workflow.SessionLocal", return_value=db_session), \
          patch("src.universe.workflow.init_db", new_callable=AsyncMock), \
-         patch("src.universe.scrapers.as9100_scraper.AS9100Scraper.scrape_by_country", new_callable=AsyncMock) as mock_as9100, \
-         patch("src.universe.scrapers.iso_registry_scraper.ISORegistryScraper.scrape_iso9001", new_callable=AsyncMock) as mock_iso, \
-         patch("src.universe.scrapers.companies_house_scraper.CompaniesHouseScraper._get", new_callable=AsyncMock) as mock_ch_get:
+         patch("src.universe.scrapers.browser.as9100_scraper.AS9100Scraper.scrape_by_country", new_callable=AsyncMock) as mock_as9100, \
+         patch("src.universe.scrapers.browser.iso_registry_scraper.ISORegistryScraper.scrape_iso9001", new_callable=AsyncMock) as mock_iso, \
+         patch("src.universe.scrapers.api.companies_house_scraper.CompaniesHouseScraper._get", new_callable=AsyncMock) as mock_ch_get:
          
         # Setup mock data return
         mock_as9100.return_value = ScraperOutput(

@@ -8,14 +8,13 @@ from typing import List, Optional
 from sqlalchemy import desc, select
 from sqlalchemy.orm import selectinload
 
-from src.core.models import CompanyTier
 from src.core.thesis import thesis
 from src.universe.database import CertificationModel, CompanyModel, ScoringEvent
 from src.universe.moat_scorer import MoatScorer
 from src.universe.ops.filters import PreEnrichmentFilter
 from src.universe.pipeline_context import set_analysis_model
 from src.universe.status import reporter
-from src.universe.tier_monitor import detect_tier_change, TierChangeReport
+from src.universe.tier_monitor import detect_tier_change, TierChangeReport, _parse_tier
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +59,36 @@ async def run_scoring(
     result = await session.execute(stmt)
     companies = result.scalars().all()
 
-    to_score = [c for c in companies if PreEnrichmentFilter.should_score(c)[0]]
-    skipped = len(companies) - len(to_score)
-    if skipped:
+    scoreable = []
+    insufficient = []
+    for c in companies:
+        ok, reason = PreEnrichmentFilter.should_score(c)
+        if ok:
+            scoreable.append(c)
+        else:
+            insufficient.append((c, reason))
+
+    # Mark insufficient-data companies explicitly so they don't look like scored-zero.
+    # Set moat_score to NULL so the UI/API can distinguish "not scored" from "scored 0".
+    for company, reason in insufficient:
+        changed = False
+        if not isinstance(company.moat_analysis, dict) or company.moat_analysis.get("scoring_status") != "insufficient_data":
+            company.moat_analysis = {"scoring_status": "insufficient_data", "reason": reason}
+            changed = True
+        if company.moat_score is not None and company.moat_score == 0:
+            company.moat_score = None
+            changed = True
+        if changed:
+            await session.commit()
+
+    if insufficient:
         logger.info(
-            f"Skipping moat scoring for {skipped} companies "
-            "(do not meet minimum criteria or lack enriched content)"
+            f"Skipping moat scoring for {len(insufficient)} companies "
+            "(insufficient data — website text or real description required). "
+            "Marked as scoring_status=insufficient_data."
         )
+
+    to_score = scoreable
     logger.info(f"Scoring {len(to_score)} companies...")
 
     for idx, company in enumerate(to_score):
@@ -81,10 +103,7 @@ async def run_scoring(
         previous_score = getattr(company, '_previous_moat_score', None)
         previous_attrs = getattr(company, '_previous_moat_attributes', None)
         previous_tier_str = getattr(company, '_previous_tier', None)
-        old_tier = None
-        if previous_tier_str:
-            tier_map = {'1A': CompanyTier.TIER_1A, '1B': CompanyTier.TIER_1B, '2': CompanyTier.TIER_2, 'waitlist': CompanyTier.WAITLIST}
-            old_tier = tier_map.get(previous_tier_str)
+        old_tier = _parse_tier(previous_tier_str) if previous_tier_str else None
 
         tier_change = detect_tier_change(
             company_id=company.id,
@@ -102,7 +121,7 @@ async def run_scoring(
             logger.info(f"Scored {idx + 1}/{len(to_score)}: {company.name} -> {company.moat_score} ({company.tier.value if company.tier else 'waitlist'})")
 
         changes = {}
-        for pillar in ["regulatory", "network", "geographic", "liability", "physical"]:
+        for pillar in thesis.pillar_names:
             old_s = (previous_attrs or {}).get(pillar, {}).get("score", 0) if isinstance(previous_attrs, dict) else 0
             new_s = (company.moat_attributes or {}).get(pillar, {}).get("score", 0) if isinstance(company.moat_attributes, dict) else 0
             if old_s != new_s:

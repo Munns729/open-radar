@@ -60,7 +60,7 @@ class MoatScorer:
         )
 
         # --- LLM analysis ---
-        print(f"[FLOW] Deep Analysis via LLM (Context: {'Semantic' if semantic_data else 'None'}) for {company.name}...")
+        logger.debug(f"Deep Analysis via LLM (Context: {'Semantic' if semantic_data else 'None'}) for {company.name}")
         analyzer = LLMMoatAnalyzer()
         llm_result = await analyzer.analyze(
             company_name=company.name,
@@ -243,7 +243,7 @@ class MoatScorer:
         }
 
         cls._assign_tier(company, score)
-        print(f"[FLOW] Classification -> Tier {company.tier} (Score: {score})")
+        logger.debug(f"Classification -> Tier {company.tier} (Score: {score})")
         return score
 
     @staticmethod
@@ -257,8 +257,4 @@ class MoatScorer:
         elif score >= t.tier_2:
             company.tier = CompanyTier.TIER_2
         else:
-            company.tier = (
-                CompanyTier.WAITLIST
-                if hasattr(CompanyTier, "WAITLIST")
-                else CompanyTier.TIER_2
-            )
+            company.tier = CompanyTier.WAITLIST

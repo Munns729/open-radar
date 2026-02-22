@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     # API Keys
     moonshot_api_key: Optional[str] = None
     companies_house_api_key: Optional[str] = None
+    fca_api_email: Optional[str] = None  # FCA Register API username (email)
+    fca_api_key: Optional[str] = None   # FCA Register API key
     notion_api_key: Optional[str] = None
     sendgrid_api_key: Optional[str] = None
     sendgrid_from_email: Optional[str] = None
@@ -26,15 +28,35 @@ class Settings(BaseSettings):
     
     # Constants
     kimi_api_base: str = "https://api.moonshot.ai/v1"
-    kimi_model: str = "kimi-latest"
+    # Heavy analysis (moat scoring, semantic enrichment). Strong model required.
+    kimi_model: str = "kimi-k2.5"
+    # Browsing agents (website discovery, extraction). Use local Qwen for cost/speed.
+    browsing_model: str = "qwen3:8b"
+    # Request timeout (seconds) for LLM calls. Increase for slow local models (e.g. Qwen 8B).
+    llm_request_timeout: float = 180.0
+    # Legacy: model for OpenAI-compatible APIs when not using role-specific models.
+    llm_model: Optional[str] = None  # Defaults to kimi_model in validator
 
     # Currency
     base_currency: str = "GBP"
     preferred_currency: str = "GBP"
     currency_date: Optional[str] = None # ISO Format (YYYY-MM-DD) or None for dynamic
 
-    # Database
+    # Database (PostgreSQL only — run docker-compose up -d)
     database_url: str = "postgresql://postgres:postgres@localhost:5432/radar"
+
+    # SSL: set IGNORE_SSL_ERRORS=1 to bypass cert verification (e.g. BSI bund.de, broken sites)
+    ignore_ssl_errors: bool = False
+
+    @field_validator('database_url')
+    @classmethod
+    def validate_postgres_url(cls, v: str) -> str:
+        if not v.startswith("postgresql"):
+            raise ValueError(
+                f"Only PostgreSQL is supported. Got: {v[:30]}... "
+                "Set DATABASE_URL=postgresql://user:pass@host:5432/radar"
+            )
+        return v
     
     # Paths
     project_root: Path = Field(default_factory=lambda: Path(__file__).parent.parent.parent)
@@ -70,7 +92,10 @@ class Settings(BaseSettings):
             
         if not self.openai_api_base:
             self.openai_api_base = self.kimi_api_base
-            
+
+        if self.llm_model is None:
+            self.llm_model = self.kimi_model
+
         return self
 
     @field_validator('moonshot_api_key')

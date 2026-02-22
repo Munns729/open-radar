@@ -40,7 +40,7 @@ To change scoring behavior, edit the YAML — no code changes needed.
 The database runs on PostgreSQL (`docker-compose up -d`).
 
 ### Universe (Core Funnel)
-- `companies`: The main table for all discovered entities. Key fields: `moat_score`, `tier`, `revenue_gbp`.
+- `companies`: The main table for all discovered entities. Key fields: `moat_score` (nullable; NULL when insufficient data — see `moat_analysis.scoring_status`), `tier`, `revenue_gbp`.
 - `certifications`: Quality signals (AS9100, etc.) linked to companies.
 - `company_relationships`: Graph edges between companies (Customer, Supplier, Competitor).
 
@@ -174,6 +174,7 @@ Each module under src/ follows this pattern:
 - `universe/database.py`: CompanyModel is the central entity. Schema changes require Alembic migration.
 - `core/config.py`: Settings singleton. Adding a new env var requires updating .env.example.
 - `web/routers/__init__.py`: Router registration. New routers must be added here.
+- **Scraper bases**: All scraper bases live in `universe/scrapers/base.py` (`BaseScraper` for Playwright, `ApiScraper` for aiohttp). Universe and other modules (e.g. carveout) import from `src.universe.scrapers.base`. There is no scraper base in core. See `universe/scrapers/README.md`.
 
 ## 7. Logic Flow (The "Agent Loop")
 1.  **Discover**: Run Universe Scrapers to find "Raw" targets.

@@ -13,11 +13,14 @@ from src.core.thesis import thesis
 from src.universe.database import CompanyModel
 from src.universe.ops.filters import PreEnrichmentFilter
 from src.universe.programs._shared import _resolve_revenue_with_source
-from src.universe.scrapers import CompaniesHouseScraper, UniverseEnrichmentAgent
-from src.universe.scrapers.universe_enrichment_agent import _is_blocked_url
-from src.universe.scrapers.website_validator import is_likely_company_site
-from src.universe.scrapers.opencorporates_scraper import OpenCorporatesScraper
-from src.universe.scrapers.website_scraper import WebsiteScraper
+from src.universe.scrapers import (
+    CompaniesHouseScraper,
+    OpenCorporatesScraper,
+    WebsiteScraper,
+)
+from src.universe.agents import WebsiteExtractionAgent
+from src.universe.agents.website_extraction_agent import _is_blocked_url
+from src.universe.ops.website_validator import is_likely_company_site, is_url_acceptable_for_company
 from src.universe.status import reporter
 
 logger = logging.getLogger(__name__)
@@ -86,7 +89,7 @@ async def run_extraction(
     web_scraper = WebsiteScraper()
     oc_scraper = OpenCorporatesScraper()
 
-    async with ch_scraper, UniverseEnrichmentAgent() as enrichment_agent:
+    async with ch_scraper, WebsiteExtractionAgent() as extraction_agent:
         for company in companies:
             should_enr, reason = PreEnrichmentFilter.should_enrich(company)
             if not should_enr and not force:
@@ -138,7 +141,6 @@ async def run_extraction(
                     existing_ch = result.scalar_one_or_none()
                     if existing_ch and existing_ch.id != company.id:
                         logger.warning(f"Collision: {company.name} matches {ch_number} which belongs to {existing_ch.name}. Skipping update.")
-                        pass
                     else:
                         company.companies_house_number = ch_number
                         company.legal_name = match.get('title')
@@ -209,7 +211,7 @@ async def run_extraction(
                 try:
                     logger.info("No website found, using Agent to search...")
                     cert_types = [c.certification_type for c in (company.certifications or []) if c.certification_type]
-                    discovered_url = await enrichment_agent.find_website_url(
+                    discovered_url = await extraction_agent.find_website_url(
                         company.name,
                         description=company.description,
                         sector=company.sector,
@@ -223,9 +225,13 @@ async def run_extraction(
                         if _is_blocked_url(discovered_url):
                             logger.debug(f"Rejecting registry URL for {company.name}: {discovered_url}")
                         else:
-                            company.website = discovered_url
-                            logger.info(f"Discovered website for {company.name}: {discovered_url}")
-                            updated = True
+                            url_ok, url_reason = is_url_acceptable_for_company(discovered_url, company.name)
+                            if not url_ok:
+                                logger.info(f"Rejecting discovered URL for {company.name}: {url_reason}")
+                            else:
+                                company.website = discovered_url
+                                logger.info(f"Discovered website for {company.name}: {discovered_url}")
+                                updated = True
                 except Exception as e:
                     logger.warning(f"Website discovery failed for {company.name}: {e}")
 
@@ -234,7 +240,7 @@ async def run_extraction(
             if company.website and (not company.description or is_placeholder):
                 try:
                     logger.info(f"Running LLM enrichment for {company.name}...")
-                    enrichment_data = await enrichment_agent.run(company.name, company.website)
+                    enrichment_data = await extraction_agent.run(company.name, company.website)
 
                     if enrichment_data.get("_url_valid") is False:
                         logger.info(f"Rejecting URL for {company.name} (failed website check)")
@@ -319,5 +325,5 @@ async def run_extraction(
                             company.raw_website_text = None
                         updated = True
 
-            company.extraction_complete_at = datetime.now(timezone.utc)
+            company.extraction_complete_at = datetime.now(timezone.utc).replace(tzinfo=None)
             await session.commit()

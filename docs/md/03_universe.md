@@ -14,6 +14,8 @@ Scrapers run to find "raw" company targets.
 
 **Deduplication**: Companies are saved to the DB with a check against existing names to prevent duplicates.
 
+Discovery is run via the universe workflow or canonical scripts (see **AGENTS.md** and **scripts/README.md**). There is no separate prompt-input document; configuration lives in `config/thesis.yaml` and scraper implementations in `src/universe/scrapers/`.
+
 ### Phase 2: Extraction (`programs.extraction.run_extraction`, formerly `enrich_companies`)
 Once companies are in the DB, this phase fills in the gaps:
 1.  **Companies House / OpenCorporates**: Fetches financial data (Revenue, EBITDA, Employees) for UK/EU companies.
@@ -26,6 +28,8 @@ Batch LLM pillar scoring for companies with `raw_website_text` that have not yet
 
 ### Phase 3b: Scoring (`programs.scoring.run_scoring`, formerly `run_scoring_pipeline`)
 Runs the `MoatScorer` (no graph) to assign a Tier (1A/1B/2) to each company. Records audit trail in `ScoringEvent`.
+
+**Insufficient data**: Companies without enough content to score (no `raw_website_text`, or only SIC-code descriptions) are **not** sent to the LLM. They are marked with `moat_analysis.scoring_status = "insufficient_data"` and `moat_score` is left `NULL` (or cleared if it was 0), so "not scored" is distinct from "scored 0". The UI shows these as "No Data" / N/A.
 
 ## 2. Moat Scoring (`src.universe.moat_scorer`)
 
@@ -58,7 +62,7 @@ The `MoatScorer` implements the **5-Pillar Investment Thesis**. It combines dete
 - IP: Max **60** points
 - **Total possible**: **395** points
 
-The `moat_score` field in the database stores the **total additive score** (0-395 scale), not a normalized 0-100 value.
+The `moat_score` field in the database stores the **total additive score** (0-395 scale), not a normalized 0-100 value. It may be **NULL** when a company has insufficient data for scoring (see Phase 3b above); in that case `moat_analysis.scoring_status` is `"insufficient_data"`.
     
 **Tiering Thresholds** (based on total score):
 -   **Tier 1A**: Score ≥ 120 (Strong Moat)

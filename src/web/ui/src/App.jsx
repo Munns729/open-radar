@@ -9,6 +9,7 @@ import CarveoutBoard from '@/features/carveout/CarveoutBoard';
 import CapitalFlows from '@/features/capital/CapitalFlows';
 import Reports from './Reports';
 import PlaceholderPage from '@/components/PlaceholderPage';
+import ThesisValidator from '@/features/thesis/ThesisValidator';
 import IntelligenceDashboard from '@/features/intelligence/IntelligenceDashboard';
 import DealDetail from '@/features/intelligence/DealDetail';
 import TrackerDashboard from '@/features/tracker/TrackerDashboard';
@@ -61,7 +62,7 @@ function App() {
             <Route path="/relationships" element={<RelationshipsDashboard />} />
             <Route path="/capital" element={<CapitalFlows />} />
             <Route path="/carveout" element={<CarveoutBoard />} />
-            <Route path="/thesis" element={<PlaceholderPage title="Thesis Validator" description="Validate investment theses against target companies and market data." />} />
+            <Route path="/thesis" element={<ThesisValidator />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<PlaceholderPage title="Settings" description="Configure RADAR settings, API keys, and preferences." />} />
           </Routes>

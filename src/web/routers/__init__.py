@@ -14,6 +14,7 @@ from src.web.routers.search import router as search_router
 from src.web.routers.reports import router as reports_router
 from src.web.routers.intel import router as intel_router
 from src.web.routers.config import router as config_router
+from src.web.routers.thesis import router as thesis_router
 
 def register_routers(app: FastAPI):
     """Register all routers with the application."""
@@ -31,3 +32,4 @@ def register_routers(app: FastAPI):
     app.include_router(reports_router)
     app.include_router(intel_router)
     app.include_router(config_router)
+    app.include_router(thesis_router)

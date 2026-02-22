@@ -16,15 +16,16 @@ from src.universe.scrapers import (
     ISORegistryScraper,
     SIRENEScraper,
     WikipediaDiscoveryScraper,
+    GCloudScraper,
+    UGAPScraper,
+    TEDScraper,
+    BOAMPScraper,
+    ANSSIScraper,
+    BSIScraper,
+    DeloitteFast50Scraper,
+    FT1000Scraper,
+    VerticalAssociationsScraper,
 )
-from src.universe.scrapers.g_cloud_scraper import GCloudScraper
-from src.universe.scrapers.ugap_scraper import UGAPScraper
-from src.universe.scrapers.ted_scraper import TEDScraper
-from src.universe.scrapers.boamp_scraper import BOAMPScraper
-from src.universe.scrapers.anssi_scraper import ANSSIScraper
-from src.universe.scrapers.bsi_scraper import BSIScraper
-from src.universe.scrapers.growth_scrapers import DeloitteFast50Scraper, FT1000Scraper
-from src.universe.scrapers.vertical_associations_scraper import VerticalAssociationsScraper
 from src.universe.status import reporter
 
 logger = logging.getLogger(__name__)

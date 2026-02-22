@@ -10,6 +10,8 @@
 #                results = session.query(Model).filter(...).all()
 #
 # Never use sync sessions in module code. Never use async sessions in scripts.
+#
+# DATABASE: PostgreSQL only. Run via docker-compose up -d.
 
 from contextlib import contextmanager, asynccontextmanager
 import sys
@@ -21,11 +23,12 @@ elif 'src.core.database' in sys.modules and 'core.database' not in sys.modules:
     sys.modules['core.database'] = sys.modules['src.core.database']
 
 from typing import Generator
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy import MetaData
 from src.core.config import settings
+
 
 class ToDictMixin:
     """Mixin to add dictionary serialization to models."""
@@ -51,21 +54,14 @@ class ToDictMixin:
                 result[key] = value
         return result
 
+
 class Base(ToDictMixin, DeclarativeBase):
     metadata = MetaData()
 
-# ──── Helper: SQLite pragmas ────
-def _set_sqlite_pragmas(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA busy_timeout=30000")
-    cursor.close()
 
-# ──── Single Async Engine ────
+# ──── Single Async Engine (PostgreSQL + asyncpg) ────
 db_url = settings.database_url
-if db_url.startswith("sqlite://") and "aiosqlite" not in db_url:
-    db_url = db_url.replace("sqlite://", "sqlite+aiosqlite://")
-elif db_url.startswith("postgresql://") and "asyncpg" not in db_url:
+if db_url.startswith("postgresql://") and "asyncpg" not in db_url:
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
 
 engine = create_async_engine(db_url, echo=False, future=True)
@@ -78,27 +74,15 @@ async_session_factory = async_sessionmaker(
     autoflush=False,
 )
 
-# ──── Single Sync Engine (Scripts Only) ────
+# ──── Single Sync Engine (Scripts Only — PostgreSQL + psycopg2) ────
 sync_db_url = settings.database_url
-if sync_db_url.startswith("sqlite+aiosqlite://"):
-    sync_db_url = sync_db_url.replace("sqlite+aiosqlite://", "sqlite://")
-elif sync_db_url.startswith("postgresql+asyncpg://"):
+if sync_db_url.startswith("postgresql+asyncpg://"):
     sync_db_url = sync_db_url.replace("postgresql+asyncpg://", "postgresql://")
-
-is_sqlite = sync_db_url.startswith("sqlite")
-
-connect_args = {}
-if is_sqlite:
-    connect_args["timeout"] = 30
 
 sync_engine = create_engine(
     sync_db_url,
     echo=False,
-    connect_args=connect_args,
 )
-
-if is_sqlite:
-    event.listen(sync_engine, "connect", _set_sqlite_pragmas)
 
 sync_session_factory = sessionmaker(
     sync_engine,
@@ -107,10 +91,12 @@ sync_session_factory = sessionmaker(
     expire_on_commit=False,
 )
 
+
 # ──── Session Providers (FastAPI Dependencies) ────
 async def get_db() -> AsyncSession:
     async with async_session_factory() as session:
         yield session
+
 
 # ──── Context Managers ────
 @contextmanager
@@ -125,6 +111,7 @@ def get_sync_db() -> Generator[Session, None, None]:
     finally:
         session.close()
 
+
 @asynccontextmanager
 async def get_async_db() -> AsyncSession:
     async with async_session_factory() as session:
@@ -134,5 +121,6 @@ async def get_async_db() -> AsyncSession:
         except Exception:
             await session.rollback()
             raise
+
 
 # ──── End of Database Configuration ────

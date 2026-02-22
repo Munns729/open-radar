@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 from playwright.async_api import Page, BrowserContext
 from datetime import datetime
 
-from src.core.base_scraper import BaseScraper
+from src.universe.scrapers.base import BaseScraper
 
 class SegmentReportScraper(BaseScraper):
     """Scrapes annual reports and extracts segment data."""

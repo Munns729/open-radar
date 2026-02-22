@@ -6,6 +6,7 @@ Designed for low-cost, robust scraping.
 import asyncio
 import json
 import logging
+import re
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from abc import ABC, abstractmethod
@@ -40,13 +41,14 @@ class BaseBrowsingAgent(ABC):
         api_key: Optional[str] = None,
         headless: bool = True
     ):
-        self.model_name = model_name or settings.kimi_model
+        self.model_name = model_name or settings.browsing_model
         self.headless = headless
         
         # Configure OpenAI client (works with Groq, Together, etc. if base_url is set)
         self.client = AsyncOpenAI(
             api_key=api_key or settings.openai_api_key,
-            base_url=api_base or settings.openai_api_base
+            base_url=api_base or settings.openai_api_base,
+            timeout=settings.llm_request_timeout,
         )
         
         self.browser: Optional[Browser] = None
@@ -62,10 +64,14 @@ class BaseBrowsingAgent(ABC):
             headless=self.headless,
             args=["--disable-blink-features=AutomationControlled"]
         )
-        self.context = await self.browser.new_context(
-            viewport={"width": 1280, "height": 800},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
+        from src.core.config import settings
+        ctx_kw = {
+            "viewport": {"width": 1280, "height": 800},
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        if settings.ignore_ssl_errors:
+            ctx_kw["ignore_https_errors"] = True
+        self.context = await self.browser.new_context(**ctx_kw)
         self.page = await self.context.new_page()
         
         # Anti-detection scripts
@@ -131,6 +137,39 @@ class BaseBrowsingAgent(ABC):
         except Exception:
             pass
 
+    def _parse_llm_json(self, raw: str) -> Optional[Dict[str, Any]]:
+        """Parse LLM output as JSON. Handles markdown code blocks and stray text (Qwen/Ollama)."""
+        if not raw or not isinstance(raw, str):
+            return None
+        text = raw.strip()
+        # Strip markdown code blocks: ```json ... ``` or ``` ... ```
+        for pattern in [r"```(?:json)?\s*([\s\S]*?)```", r"```\s*([\s\S]*?)```"]:
+            m = re.search(pattern, text)
+            if m:
+                text = m.group(1).strip()
+                break
+        # Try to find JSON object in text (in case of preamble/suffix)
+        if not text.startswith("{"):
+            brace = text.find("{")
+            if brace >= 0:
+                # Find matching closing brace
+                depth, end = 0, brace
+                for i, c in enumerate(text[brace:], brace):
+                    if c == "{":
+                        depth += 1
+                    elif c == "}":
+                        depth -= 1
+                        if depth == 0:
+                            end = i
+                            break
+                if depth == 0:
+                    text = text[brace : end + 1]
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        return None
+
     async def ask_llm(self, goal: str, content: str) -> Dict[str, Any]:
         """Query LLM for next action"""
         prompt = f"""
@@ -153,17 +192,23 @@ class BaseBrowsingAgent(ABC):
         }}
         
         If the goal is achieved or impossible, return "finish".
-        Only return valid JSON.
+        If you have tried "extract" 2+ times without success, return "finish".
+        Only return valid JSON. No markdown, no code blocks.
         """
         
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=4096
-            )
+            # Ollama and some local models don't support response_format; skip when using local
+            base = settings.openai_api_base or ""
+            use_json_format = "localhost" not in base and "11434" not in base
+            kwargs = {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 4096,
+            }
+            if use_json_format:
+                kwargs["response_format"] = {"type": "json_object"}
+            response = await self.client.chat.completions.create(**kwargs)
             
             # Log Cost
             if response.usage:
@@ -175,12 +220,14 @@ class BaseBrowsingAgent(ABC):
                      provider="OpenAI/Compatible"
                 )
             
-            decision = json.loads(response.choices[0].message.content)
-            logger.info(f"LLM Decision: {json.dumps(decision, indent=2)}")
-            return decision
+            raw = response.choices[0].message.content
+            decision = self._parse_llm_json(raw)
+            if decision:
+                logger.info(f"LLM Decision: {json.dumps(decision, indent=2)}")
+                return decision
         except Exception as e:
             logger.error(f"LLM Error: {e}")
-            return {"action": "finish", "reasoning": "Error calling LLM"}
+        return {"action": "finish", "reasoning": "Error calling LLM"}
 
     async def execute_action(self, action_data: Dict[str, Any]) -> bool:
         """Execute the action decided by LLM. Returns True if task should continue."""
@@ -192,13 +239,15 @@ class BaseBrowsingAgent(ABC):
         self.history.append(f"Action: {action}, Selector: {selector}, Reasoning: {action_data.get('reasoning')}")
         
         try:
+            # Longer timeout for local/slow models (Qwen 8B) - pages may load slowly
+            action_timeout = 12000 if ("localhost" in (settings.openai_api_base or "") or "11434" in (settings.openai_api_base or "")) else 5000
             if action == AgentAction.CLICK:
                 try:
-                    await self.page.click(selector, timeout=5000)
+                    await self.page.click(selector, timeout=action_timeout)
                 except Exception as e:
                     logger.warning(f"Standard click failed ({e}), trying force click...")
                     try:
-                        await self.page.click(selector, timeout=5000, force=True)
+                        await self.page.click(selector, timeout=action_timeout, force=True)
                     except Exception as e2:
                         # Fallback: Check if it's a link and navigate directly
                         try:
@@ -216,10 +265,10 @@ class BaseBrowsingAgent(ABC):
                         logger.warning(f"Action failed: {e2}")
                         return True # Continue despite error
                 
-                await self.page.wait_for_load_state("networkidle", timeout=5000)
+                await self.page.wait_for_load_state("networkidle", timeout=action_timeout)
             
             elif action == AgentAction.TYPE:
-                await self.page.fill(selector, action_data.get("text", ""))
+                await self.page.fill(selector, action_data.get("text", ""), timeout=action_timeout)
             
             elif action == AgentAction.SCROLL:
                 await self.page.evaluate("window.scrollBy(0, 500)")
@@ -235,7 +284,7 @@ class BaseBrowsingAgent(ABC):
                      await self.page.press(selector, key)
                 else:
                      await self.page.keyboard.press(key)
-                await self.page.wait_for_load_state("networkidle", timeout=5000)
+                await self.page.wait_for_load_state("networkidle", timeout=action_timeout)
 
             elif action == AgentAction.EXTRACT:
                 return True # Continue, maybe extract more? Or strictly finish?
@@ -259,45 +308,21 @@ class BaseBrowsingAgent(ABC):
 
 async def search_web(query: str, max_results: int = 3) -> str:
     """
-    Simple search helper using googlesearch-python or DuckDuckGo.
+    Simple search helper using googlesearch-python (Google).
     """
     results = []
-    
-    # 1. Try Google Search (via scraping)
     try:
         from googlesearch import search
-        # search() is synchronous, run in executor
         loop = asyncio.get_event_loop()
-        # search yields URLs, get first N
         urls = await loop.run_in_executor(None, lambda: list(search(query, num_results=max_results, advanced=True)))
-        
-        # googlesearch advanced=True yields a SearchResult object with title, url, description
-        # But wait, googlesearch-python might just yield strings if advanced=False.
-        # Let's check docs: `search(term, num_results=10, lang="en")` yields URLs (strings).
-        # Ah I installed `googlesearch-python` which is a wrapper. Let's see.
-        
-        # If it returns strings:
+
         if urls and isinstance(urls[0], str):
-             results = [{"title": "", "href": u, "body": ""} for u in urls]
-        # If it returns objects (some versions do):
-        elif urls and hasattr(urls[0], 'url'):
-             results = [{"title": u.title, "href": u.url, "body": u.description} for u in urls]
+            results = [{"title": "", "href": u, "body": ""} for u in urls]
+        elif urls and hasattr(urls[0], "url"):
+            results = [{"title": getattr(u, "title", ""), "href": u.url, "body": getattr(u, "description", "")} for u in urls]
 
         if results:
             return json.dumps(results)
-            
     except Exception as e:
         logger.warning(f"Google search failed: {e}")
-
-    # 2. Fallback to DuckDuckGo
-    try:
-        from duckduckgo_search import DDGS
-        ddgs = DDGS()
-        # Try text search
-        ddg_results = ddgs.text(query, max_results=max_results)
-        if ddg_results:
-            return json.dumps(ddg_results)
-    except Exception as e:
-        logger.error(f"DDG search failed: {e}")
-        
     return ""

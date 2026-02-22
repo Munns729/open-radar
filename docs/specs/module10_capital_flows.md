@@ -18,7 +18,6 @@ The system uses an **LLM-Agent based scraping architecture** to bypass anti-bot 
     -   `NewsMonitoringAgent`: Tracks M&A news.
     -   `PublicMarketAgent`: Parses 8-Ks for deal terms.
 3.  **Analysis Engines (`src/capital/analyzers/`)**:
-    -   `ThesisValidator`: Validates investment theses (e.g., "Regulatory moats get 2x premium").
     -   `ExitMatcher`: Matches portfolio companies to buyers.
 4.  **Workflow (`src/capital/workflow.py`)**: Orchestrates the weekly scan.
 

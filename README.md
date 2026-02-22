@@ -38,7 +38,7 @@ The scoring framework is fully configurable — see `docs/design/custom_investme
 |-------|-----------|
 | Backend | FastAPI, Python 3.11+, SQLAlchemy, Alembic |
 | Frontend | React, Vite, Tailwind CSS |
-| Database | PostgreSQL (recommended) / SQLite (dev) |
+| Database | PostgreSQL 15+ (via Docker) |
 | AI | OpenAI-compatible LLMs (configurable) |
 | Scraping | Playwright (browser automation) |
 
@@ -61,8 +61,11 @@ playwright install chromium
 cp .env.example .env
 # Edit .env with your API keys
 
-# Database (PostgreSQL via Docker)
+# Database (PostgreSQL required)
 docker-compose up -d
+
+# Run migrations
+alembic upgrade head
 
 # Run backend
 uvicorn src.web.app:app --reload --port 8000

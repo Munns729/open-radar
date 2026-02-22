@@ -1,8 +1,13 @@
+"""
+Pipeline status reporter.
 
+Writes live pipeline state to src/web/state.json so the frontend dashboard
+can poll it without a WebSocket connection.
+"""
 import json
 import os
 import time
-from typing import Dict, Any, List
+
 
 class StatusReporter:
     """

@@ -18,7 +18,9 @@ import {
     Coins,
     Clock,
     ChevronRight,
-    Flame
+    Flame,
+    Sparkles,
+    RefreshCw
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -40,6 +42,7 @@ export default function Dashboard() {
         recentDeals: 0,
         loading: true
     });
+    const [recentStats, setRecentStats] = useState(null);
     const [activity, setActivity] = useState([]);
     const [alerts, setAlerts] = useState([]);
     const [tier1ACompanies, setTier1ACompanies] = useState([]);
@@ -51,12 +54,13 @@ export default function Dashboard() {
             try {
                 // Fetch all data in parallel
                 // api.get returns the data object directly (or null if caught)
-                const [statsData, alertsData, activityData, tier1A, sectors] = await Promise.all([
+                const [statsData, alertsData, activityData, tier1A, sectors, recentStatsData] = await Promise.all([
                     api.getDashboardStats().catch(() => null),
                     api.getAlerts({ unread_only: true, limit: 5 }).catch(() => null),
                     api.getDashboardActivity({ limit: 10 }).catch(() => null),
                     api.getCompanies({ tier: 'TIER_1A', limit: 5 }).catch(() => null),
-                    api.getHotSectors().catch(() => null)
+                    api.getHotSectors().catch(() => null),
+                    api.getUniverseRecentStats().catch(() => null)
                 ]);
 
                 // 1. Stats
@@ -95,6 +99,10 @@ export default function Dashboard() {
                     setHotSectors(sectors.slice(0, 3));
                 }
 
+                if (recentStatsData) {
+                    setRecentStats(recentStatsData);
+                }
+
             } catch (error) {
                 console.error('Failed to fetch dashboard data:', error);
                 setStats(prev => ({ ...prev, loading: false }));
@@ -123,6 +131,56 @@ export default function Dashboard() {
                 <h1 className="text-2xl font-bold text-text-pri">Dashboard</h1>
                 <p className="text-text-sec text-sm mt-1">Real-time intelligence and market tracking overview.</p>
             </header>
+
+            {/* Recent Discovery Stats */}
+            {recentStats && (
+                <Card className="border-border-subtle bg-surface">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-primary" />
+                            Recently Added
+                        </CardTitle>
+                        <p className="text-xs text-text-sec">
+                            Companies discovered or enriched in the last 24h, 5 days, 30 days.
+                        </p>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+                            <div className="flex items-center gap-2 p-2 rounded-lg bg-surface-alt">
+                                <span className="text-xs text-text-ter">Discovered 24h</span>
+                                <span className="font-semibold text-text-pri">{recentStats.discovered_24h ?? 0}</span>
+                            </div>
+                            <div className="flex items-center gap-2 p-2 rounded-lg bg-surface-alt">
+                                <span className="text-xs text-text-ter">5d</span>
+                                <span className="font-semibold text-text-pri">{recentStats.discovered_5d ?? 0}</span>
+                            </div>
+                            <div className="flex items-center gap-2 p-2 rounded-lg bg-surface-alt">
+                                <span className="text-xs text-text-ter">30d</span>
+                                <span className="font-semibold text-text-pri">{recentStats.discovered_30d ?? 0}</span>
+                            </div>
+                            <div className="flex items-center gap-2 p-2 rounded-lg bg-surface-alt">
+                                <RefreshCw className="h-3 w-3 text-text-ter" />
+                                <span className="text-xs text-text-ter">Enriched 24h</span>
+                                <span className="font-semibold text-text-pri">{recentStats.enriched_24h ?? 0}</span>
+                            </div>
+                            <div className="flex items-center gap-2 p-2 rounded-lg bg-surface-alt">
+                                <span className="text-xs text-text-ter">5d</span>
+                                <span className="font-semibold text-text-pri">{recentStats.enriched_5d ?? 0}</span>
+                            </div>
+                            <div className="flex items-center gap-2 p-2 rounded-lg bg-surface-alt">
+                                <span className="text-xs text-text-ter">30d</span>
+                                <span className="font-semibold text-text-pri">{recentStats.enriched_30d ?? 0}</span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => navigate('/universe')}
+                            className="mt-3 text-xs text-primary hover:text-primary-light flex items-center gap-1"
+                        >
+                            View & filter by recency <ChevronRight className="h-3 w-3" />
+                        </button>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* KPI Cards Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

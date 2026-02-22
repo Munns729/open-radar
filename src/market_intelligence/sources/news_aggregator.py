@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 
 from src.market_intelligence.database import NewsSource, IntelligenceItem
 
@@ -47,7 +48,8 @@ class NewsAggregator:
                     if response.status != 200:
                         logger.error(f"Failed to fetch {source.url}: Status {response.status}")
                         return []
-                    content = await response.text()
+                    raw = await response.read()
+                    content = raw.decode('utf-8', errors='replace')
             
             feed = feedparser.parse(content)
             items = []
@@ -109,15 +111,23 @@ class NewsAggregator:
         return unique_items
 
     async def save_items(self, items: List[Dict]):
-        """Save items to database."""
+        """Save items to database. Skips duplicates (content_hash UNIQUE) on re-run."""
+        saved = 0
         for item_data in items:
-            # Double check existence to prevent race conditions or stale reads
             stmt = select(IntelligenceItem).where(IntelligenceItem.content_hash == item_data['content_hash'])
             result = await self.session.execute(stmt)
-            if not result.scalar_one_or_none():
-                item = IntelligenceItem(**item_data)
-                self.session.add(item)
-        await self.session.commit()
+            if result.scalar_one_or_none():
+                continue
+            item = IntelligenceItem(**item_data)
+            self.session.add(item)
+            try:
+                await self.session.commit()
+                saved += 1
+            except IntegrityError:
+                await self.session.rollback()
+                logger.debug(f"Skipped duplicate content_hash: {item_data.get('content_hash', '')[:16]}...")
+        if saved and saved < len(items):
+            logger.info(f"Saved {saved}/{len(items)} items (duplicates skipped)")
 
     async def process_source(self, source: NewsSource):
         """Orchestrate fetch, dedupe, save for a single source."""

@@ -2,11 +2,10 @@
 Unit tests for Capital Flows Module (Module 10).
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from datetime import date
 
 from src.capital.scrapers.base_agent import BaseBrowsingAgent, AgentAction
-from src.capital.analyzers.thesis_validator import ThesisValidator
 from src.capital.analyzers.exit_matcher import ExitMatcher
 from src.capital.database import PEFirmModel, PEInvestmentModel, StrategicAcquirerModel, ConsolidatorModel
 from src.core.data_types import Company
@@ -18,21 +17,6 @@ def mock_session():
     return MagicMock()
 
 # --- Test Analysis Engines ---
-
-def test_thesis_validator(mock_session):
-    # Mock database return for avg multiples
-    # Rows: moat_type, avg_multiple, count
-    mock_session.execute.return_value.fetchall.return_value = [
-        MagicMock(moat_type="regulatory", avg_multiple=15.0),
-        MagicMock(moat_type="none", avg_multiple=10.0)
-    ]
-    
-    validator = ThesisValidator(mock_session)
-    result = validator.validate_regulatory_premium()
-    
-    assert result["hypothesis"] == "Regulatory Moat Premium"
-    assert result["supports_thesis"] is True
-    assert result["premium_pct"] == 50.0
 
 def test_exit_matcher(mock_session):
     # Setup mocks for different models

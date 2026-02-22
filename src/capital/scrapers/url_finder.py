@@ -18,12 +18,22 @@ class UrlFinderAgent(BaseBrowsingAgent):
         print(f"[UrlFinder] Searching for {firm_name}...")
         
         try:
-            # Use DuckDuckGo
-            await self.page.goto("https://duckduckgo.com", timeout=30000)
+            # Use Google Search
+            await self.page.goto("https://www.google.com", timeout=30000)
             await self.page.wait_for_load_state("domcontentloaded")
-            
-            # HARDCODED SEARCH (More reliable than Agent loop)
-            # DuckDuckGo input is usually name="q"
+
+            # Handle cookie consent (EU/UK)
+            try:
+                consent = await self.page.query_selector('button:has-text("Reject all")')
+                if not consent:
+                    consent = await self.page.query_selector('button:has-text("Accept all")')
+                if consent:
+                    await consent.click()
+                    await self.page.wait_for_load_state("networkidle")
+            except Exception:
+                pass
+
+            # Google search input is name="q"
             search_input = "input[name='q']"
             try:
                 await self.page.wait_for_selector(search_input, timeout=5000)

@@ -15,7 +15,7 @@ Primary Focus: UK (initial), expanding to EU/US.
 ## Architecture
 The module is composed of:
 1.  **Scrapers**: Async implementations for each data source.
-    - `src/universe/scrapers/`
+    - `src/universe/scrapers/` — shared bases in `base.py` (`BaseScraper`, `ApiScraper`); API scrapers in `api/`, Playwright scrapers in `browser/`. See `src/universe/scrapers/README.md`.
 2.  **Database**: SQLAlchemy models stored in PostgreSQL (or SQLite for dev).
     - `src/universe/database.py`
 3.  **Analysis Logic**:
@@ -25,7 +25,7 @@ The module is composed of:
     - `src/universe/workflow.py`
 
 ## Moat Scoring Methodology (0-100)
-Companies are scored to identify high-quality targets (Tier 1A/1B).
+Companies are scored to identify high-quality targets (Tier 1A/1B). Companies without sufficient content (e.g. no website text, SIC-only description) are not scored: `moat_score` remains NULL and `moat_analysis.scoring_status` is set to `"insufficient_data"` so they are distinct from companies scored 0.
 
 ### 1. Regulatory Certifications (Max 40)
 - **AS9100**: 20 pts (High barrrier to entry)

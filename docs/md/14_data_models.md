@@ -53,9 +53,10 @@ erDiagram
 | `revenue_gbp` | BigInteger | Annual revenue (£) |
 | `employees` | Integer | Employee count |
 | `sector` | String | Industry sector |
-| `moat_score` | Integer | 0-395 defensibility score |
+| `moat_score` | Integer, nullable | 0-395 defensibility score; NULL when insufficient data (see `moat_analysis.scoring_status`) |
 | `tier` | String | Tier classification (1A/1B/2) |
 | `moat_attributes` | JSON | Pillar breakdown |
+| `moat_analysis` | JSON | Extended analysis; may include `scoring_status: "insufficient_data"` when not scored due to lack of website text / real description |
 
 **Relationships**:
 - `certifications`: One-to-Many with `CertificationModel`

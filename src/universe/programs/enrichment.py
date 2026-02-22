@@ -10,7 +10,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import selectinload
 
 from src.universe.database import CompanyModel
-from src.universe.discovery.semantic_enrichment import enrich_companies_batched
+from src.universe.ops.semantic_enrichment import enrich_companies_batched
 from src.universe.ops.filters import PreEnrichmentFilter
 from src.universe.programs._shared import build_llm_clients
 from src.universe.status import reporter
@@ -91,7 +91,7 @@ async def run_enrichment(
             if not c.moat_analysis or not isinstance(c.moat_analysis, dict):
                 c.moat_analysis = {}
             c.moat_analysis["semantic"] = res.to_dict()
-            c.semantic_enriched_at = datetime.now(timezone.utc)
+            c.semantic_enriched_at = datetime.now(timezone.utc).replace(tzinfo=None)
             logger.info(f"Semantically enriched {c.name}")
 
     await session.commit()

@@ -16,6 +16,7 @@ This documentation is designed to help developers and AI agents understand the s
 - **[03_universe.md](./03_universe.md)**: Universe Scanner (Discovery, Enrichment, Moat Scoring).
 - **[04_intelligence.md](./04_intelligence.md)**: Deal Intelligence (Valuation, Market Intel).
 - **[05_capital.md](./05_capital.md)**: Capital Flows (PE Firms, Portfolios).
+- **[thesis_validator.md](./thesis_validator.md)**: Thesis Validator (Company fit, Leaderboard).
 - **[06_competitive.md](./06_competitive.md)**: Competitive Radar (VC Tracking, Threats).
 - **[07_carveout.md](./07_carveout.md)**: Carveout Scanner (Corporate Parents, Signals).
 - **[08_relationships_tracker.md](./08_relationships_tracker.md)**: Relationship Manager & Target Tracker.

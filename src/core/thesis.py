@@ -60,6 +60,44 @@ class BusinessFilters(BaseModel):
     negative_keyword_penalty: int = 5
 
 
+class PipelineFilters(BaseModel):
+    """
+    Pre-enrichment pipeline exclusions. Applied before expensive enrichment.
+    All values come from config/thesis.yaml — no hardcoding in code.
+    """
+    exclude_sectors: List[str] = Field(
+        default_factory=lambda: [
+            "Biotechnology", "Pharmaceuticals", "Mining", "Oil & Gas",
+            "Real Estate", "Consumer Goods",
+        ],
+        description="Sector names to exclude from enrichment/scoring",
+    )
+    public_listing_keywords: List[str] = Field(
+        default_factory=lambda: [
+            "publicly traded", "nasdaq:", "nyse:", "lse:", "euronext:",
+            "stock exchange", "ticker symbol", "fortune 500", "ftse 100",
+            "cac 40", "dax 30",
+        ],
+        description="Keywords in description indicating public listing (excluded)",
+    )
+    max_revenue_exclude: Optional[float] = Field(
+        default=500_000_000,
+        description="Exclude companies with revenue above this (GBP)",
+    )
+    exclude_plc_by_name: bool = Field(
+        default=True,
+        description="Exclude companies with 'PLC' in name (UK public listing)",
+    )
+    enrichment_skip_days: float = Field(
+        default=0.5,
+        description="Skip companies enriched/updated within this many days (0.5=12h; set 7 for weekly cadence)",
+    )
+    min_semantic_enrichment_text_chars: int = Field(
+        default=2500,
+        description="Zone 2 gate: min website text length (chars) for Zone 3 semantic enrichment",
+    )
+
+
 class RiskConfig(BaseModel):
     """Negative signal configuration."""
     keywords: List[str] = Field(default_factory=list)
@@ -109,6 +147,7 @@ class ThesisConfig(BaseModel):
     risk: RiskConfig = Field(default_factory=RiskConfig)
     deal_screening: DealScreening = Field(default_factory=DealScreening)
     business_filters: BusinessFilters = Field(default_factory=BusinessFilters)
+    pipeline_filters: PipelineFilters = Field(default_factory=PipelineFilters)
 
     # --- LLM Prompts ---
     moat_analysis_system_prompt: str = "You are an expert investment analyst. Always respond in valid JSON."
@@ -231,9 +270,9 @@ class ThesisConfig(BaseModel):
 
         pillar_text = "\n\n".join(pillar_sections)
 
-        # Build expected JSON keys
+        # Build expected JSON keys (escape braces for .format() — use {{ }} so they become { } after format)
         json_keys = ", ".join(
-            f'"{k}": {{"score": 0-{p.max_raw_score}, "evidence": "Specific evidence"}}'
+            f'"{k}": {{{{ "score": 0-{p.max_raw_score}, "evidence": "Specific evidence" }}}}'
             for k, p in self.pillars.items()
         )
 
@@ -269,28 +308,43 @@ Respond ONLY in valid JSON format:
         dimension_lines = []
         for i, (key, pillar) in enumerate(self.pillars.items(), 1):
             dimension_lines.append(
-                f"{i}. **{pillar.name}**: {pillar.description} "
-                f"(0 = none, 10 = extremely strong)"
+                f"{i}. {pillar.name} (key: \"{key}\"): {pillar.description} "
+                f"Score 0-10."
             )
         dimension_text = "\n".join(dimension_lines)
 
-        json_example_keys = {k: {"score": 7, "confidence": 0.8, "band": [5, 8], "justification": "..."} for k in self.pillars}
+        # Build a realistic JSON example with SHORT justifications (no "..." placeholders)
+        # Use a top-level object with "results" key for json_object mode compatibility
+        example_justifications = [
+            "ISO 27001 certified",
+            "No platform dynamics",
+            "UK defence clearance",
+            "Third-party auditor",
+            "On-site maintenance contracts",
+        ]
         import json
-        json_example = json.dumps([{"company": "Company Name", **json_example_keys}], indent=2)
+        example_pillars = {}
+        for i, k in enumerate(self.pillars):
+            j = example_justifications[i] if i < len(example_justifications) else "No evidence found"
+            example_pillars[k] = {"score": 3, "confidence": 0.6, "band": [1, 5], "justification": j}
+        json_example = json.dumps(
+            {"results": [{"company": "Example Corp", **example_pillars}]},
+            indent=2,
+        )
 
-        return f"""Analyze these companies for investment moat indicators. For each, provide scores (0-10) on these dimensions:
+        return f"""Score these companies on investment moat dimensions. For each company and each dimension, return:
+- score (integer 0-10)
+- confidence (float 0.0-1.0)
+- band: [low, high] plausible range
+- justification: MAX 5 WORDS. No full sentences.
 
+Dimensions:
 {dimension_text}
 
-Also provide:
-- Your **confidence** in each score (0.0-1.0)
-- A **score range** [low, high] for plausible values
-- A brief **justification** (1 sentence)
+Return a JSON object with a "results" key containing an array (same order as input).
+Keep justification under 5 words. No markdown. No code fences. Only valid JSON.
 
-Return JSON array with same order as input:
-```json
 {json_example}
-```
 
 COMPANIES TO ANALYZE:
 {{companies_data}}
@@ -323,6 +377,7 @@ COMPANIES TO ANALYZE:
                 "max_revenue": self.business_filters.max_revenue,
                 "target_countries": self.business_filters.target_countries,
             },
+            "pipeline_filters": self.pipeline_filters.model_dump(),
         }
 
 

@@ -21,6 +21,7 @@ router = APIRouter(
 class CapitalScanRequest(BaseModel):
     headless: bool = True
     terms: Optional[List[str]] = None
+    sources: Optional[List[str]] = None  # SEC, FCA, IMERGEA - default all
 
 @router.post("/scan", summary="Trigger Capital Flows Scan")
 async def trigger_capital_scan(
@@ -29,30 +30,25 @@ async def trigger_capital_scan(
 ):
     """
     Trigger the Capital Flows scanning workflow in the background.
-    This process:
-    1. Scrapes SEC Edgar for PE/VC firms
-    2. Scrapes websites of discovered firms for portfolio companies
-    3. Runs thesis validation
+    Sources: SEC (US), FCA (UK), IMERGEA (Europe). Default: all.
     """
-    
+    sources = request.sources
+
     async def run_scan():
         try:
-            logger.info("Starting background capital flows scan...")
-            # Note: scan_capital_flows is currently an async function but might use blocking calls.
-            # In a real production app, we might want to run this in a separate process or thread pool 
-            # if it's CPU bound or blocking IO. 
-            # Since recent refactors, it should be async friendly or at least awaits internal steps.
-            await scan_capital_flows() 
+            logger.info("Starting background capital flows scan (sources=%s)...", sources)
+            await scan_capital_flows(sources=sources)
             logger.info("Background capital flows scan completed.")
         except Exception as e:
             logger.error(f"Background capital flows scan failed: {e}", exc_info=True)
 
     background_tasks.add_task(run_scan)
-    
+
     return {
         "status": "accepted",
         "message": "Capital flows scan started in background",
-        "details": "Check logs for progress. This process may take several minutes."
+        "sources": sources,
+        "details": "Check logs for progress. Sources: SEC (US), FCA (UK), IMERGEA (Europe).",
     }
 
 @router.get("/status", summary="Check Scan Status")

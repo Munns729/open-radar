@@ -4,9 +4,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from src.core.database import get_async_db
-from src.core.config import settings
-from src.core.notifications import email_client
-from src.market_intelligence.synthesizers.weekly_briefing import WeeklyBriefingGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -15,41 +12,50 @@ scheduler = AsyncIOScheduler()
 async def run_weekly_briefing():
     """
     Job function to generate the weekly briefing.
+    Uses the market_intelligence workflow which handles local save + email.
     """
     logger.info("Running scheduled job: Weekly Briefing")
     try:
-        async with get_async_db() as session:
-            generator = WeeklyBriefingGenerator(session)
-            briefing = await generator.generate_briefing()
-            
-            # Render Markdown for logs
-            markdown_report = generator.render_markdown(briefing)
-            logger.info(f"Weekly Briefing Generated:\n{markdown_report[:200]}...")
-            
-            # Send Email
-            if settings.admin_email:
-                html_report = generator.render_html(briefing)
-                subject = f"RADAR Weekly Briefing: {briefing.week_starting}"
-                success = email_client.send_email(
-                    to_email=settings.admin_email,
-                    subject=subject,
-                    html_content=html_report
-                )
-                if success:
-                    logger.info(f"Briefing emailed to {settings.admin_email}")
-                else:
-                    logger.error("Failed to email briefing.")
-            else:
-                logger.warning("No ADMIN_EMAIL set. Briefing not emailed.")
-            
+        from src.market_intelligence.workflow import generate_market_briefing
+        briefing = await generate_market_briefing()
+        if briefing:
+            logger.info(f"Weekly Briefing generated for {briefing.week_starting}")
+        else:
+            logger.warning("Briefing generation returned None")
     except Exception as e:
         logger.error(f"Failed to run weekly briefing job: {e}", exc_info=True)
+
+async def run_daily_pipeline():
+    """
+    Job function: enrichment + scoring + tier detection.
+    Runs the pipeline without discovery or briefing (those are separate cadences).
+    """
+    logger.info("Running scheduled job: Daily Pipeline")
+    try:
+        from scripts.canonical.run_daily_pipeline import run_pipeline
+        await run_pipeline(
+            skip_enrich=False,
+            skip_scoring=False,
+            skip_briefing=True,  # briefing runs weekly
+            include_discovery=False,
+        )
+    except Exception as e:
+        logger.error(f"Daily pipeline failed: {e}", exc_info=True)
+
 
 def start_scheduler():
     """
     Initialize and start the scheduler.
     """
-    # Schedule Weekly Briefing for Monday at 8:00 AM
+    # Daily: enrich + score + tier detect (6:00 AM)
+    scheduler.add_job(
+        run_daily_pipeline,
+        CronTrigger(hour=6, minute=0),
+        id='daily_pipeline',
+        replace_existing=True
+    )
+    
+    # Weekly: full briefing (Monday 8:00 AM, after daily pipeline completes)
     scheduler.add_job(
         run_weekly_briefing,
         CronTrigger(day_of_week='mon', hour=8, minute=0),
@@ -58,7 +64,7 @@ def start_scheduler():
     )
     
     scheduler.start()
-    logger.info("APScheduler started. Weekly Briefing scheduled for Mondays at 8am.")
+    logger.info("APScheduler started. Daily pipeline at 6am, Weekly briefing Mondays 8am.")
 
 async def stop_scheduler():
     """

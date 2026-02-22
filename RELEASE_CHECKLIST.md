@@ -167,7 +167,7 @@ git pull origin main
 | Public (committed) | Private (gitignored) |
 |---|---|
 | All `src/` code | `config/thesis.yaml` (your weights & prompts) |
-| `config/thesis.example.yaml` (5-pillar template) | `data/radar.db` (your company universe) |
+| `config/thesis.example.yaml` (5-pillar template) | PostgreSQL data (your company universe) |
 | `.env.example` (blank template) | `.env` (your API keys) |
 | `scripts/canonical/` | `scripts/one_off/` (PE firm research) |
 | Tests (13 configurability + existing suites) | `scripts/debug/`, `scripts/seeding/` |

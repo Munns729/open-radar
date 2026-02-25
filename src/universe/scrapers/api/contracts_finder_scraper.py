@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 
 import aiohttp
 
+from src.core.utils import normalize_name
+
 logger = logging.getLogger(__name__)
 
 # CPV prefixes for IT/software/services
@@ -110,6 +112,100 @@ class ContractsFinderScraper:
                 continue
 
         return list(companies.values())
+
+    def _notice_url_from_release(self, release: Dict) -> Optional[str]:
+        """Build Contracts Finder notice URL from release id."""
+        rid = release.get("id") or ""
+        if not rid:
+            return None
+        # Release id often has suffix e.g. "uuid-885951"; notice page uses base uuid
+        notice_id = rid.rsplit("-", 1)[0] if "-" in rid else rid
+        return f"https://www.contractsfinder.service.gov.uk/Notice/{notice_id}"
+
+    def _extract_supplier_urls_from_releases(self, releases: List[Dict]) -> Dict[str, List[str]]:
+        """
+        Extract supplier names from award releases and return mapping
+        normalized_name -> list of notice URLs (for cross-checking).
+        """
+        out: Dict[str, List[str]] = {}
+        for release in releases:
+            try:
+                parties = release.get("parties") or []
+                awards = release.get("awards") or []
+                winner_ids = set()
+                for award in awards:
+                    for sup in award.get("suppliers", []):
+                        winner_ids.add(sup.get("id", ""))
+                url = self._notice_url_from_release(release)
+                if not url:
+                    continue
+                for party in parties:
+                    pid = party.get("id", "")
+                    if winner_ids and pid not in winner_ids:
+                        continue
+                    name = (party.get("name") or "").strip()
+                    if not name or len(name) < 2:
+                        continue
+                    skip = ("ministry", "council", "authority", "nhs", "police", "borough")
+                    if any(s in name.lower() for s in skip):
+                        continue
+                    key = normalize_name(name)
+                    if key not in out:
+                        out[key] = []
+                    if url not in out[key]:
+                        out[key].append(url)
+            except Exception as e:
+                logger.warning(f"Error parsing Contracts Finder release: {e}")
+                continue
+        return out
+
+    async def get_award_supplier_urls(
+        self,
+        published_from_days: int = 730,
+        max_unique: int = 5000,
+    ) -> Dict[str, List[str]]:
+        """
+        Paginate award notices and return mapping normalized_supplier_name -> list of notice URLs.
+        Used to cross-check VC portfolio companies against UK government contract winners.
+        """
+        from_dt = datetime.now(timezone.utc) - timedelta(days=published_from_days)
+        published_from = from_dt.strftime("%Y-%m-%dT00:00:00Z")
+        params = {
+            "publishedFrom": published_from,
+            "stages": "award",
+            "limit": 100,
+        }
+        merged: Dict[str, List[str]] = {}
+        cursor = None
+        page = 0
+        while len(merged) < max_unique:
+            if cursor:
+                params["cursor"] = cursor
+            try:
+                await self._rate_limit()
+                async with self.session.get(self.BASE_URL, params=params) as response:
+                    if response.status != 200:
+                        logger.warning(f"Contracts Finder API {response.status}")
+                        break
+                    data = await response.json()
+            except Exception as e:
+                logger.error(f"Contracts Finder request failed: {e}")
+                break
+            releases = data.get("releases") or []
+            if not releases:
+                break
+            batch = self._extract_supplier_urls_from_releases(releases)
+            for key, urls in batch.items():
+                merged.setdefault(key, [])
+                for u in urls:
+                    if u not in merged[key]:
+                        merged[key].append(u)
+            page += 1
+            cursor = data.get("cursor")
+            if not cursor:
+                break
+        logger.info(f"Contracts Finder: {len(merged)} unique suppliers from award notices (last {published_from_days} days)")
+        return merged
 
     async def discover(
         self,

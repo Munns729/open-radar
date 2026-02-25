@@ -57,3 +57,26 @@ def normalize_name(name: str) -> str:
         words.pop()
         
     return " ".join(words)
+
+
+def fuzzy_match_company(
+    name: str,
+    candidates: list[tuple[int, str]],
+    threshold: int = 80,
+) -> tuple[int, int] | None:
+    """
+    Find the best-matching existing company by name (e.g. "Acme Ltd" vs "Acme Limited").
+    candidates: list of (company_id, company_name).
+    Returns (company_id, score) if best score >= threshold, else None.
+    Uses token_set_ratio to handle word order and legal suffixes. 80 catches Ltd/Limited.
+    """
+    if not name or not name.strip() or not candidates:
+        return None
+    from rapidfuzz import fuzz
+    from rapidfuzz.process import extractOne
+    names = [c[1] or "" for c in candidates]
+    out = extractOne(name, names, scorer=fuzz.token_set_ratio, score_cutoff=threshold)
+    if out is None:
+        return None
+    _best_name, score, index = out
+    return (candidates[index][0], score)

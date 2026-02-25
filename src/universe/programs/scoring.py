@@ -26,10 +26,12 @@ async def run_scoring(
     countries: Optional[List[str]] = None,
     analysis_model: str = "auto",
     limit: Optional[int] = None,
+    company_ids: Optional[List[int]] = None,
 ) -> TierChangeReport:
     """
     Moat scoring and tier assignment. No graph analysis or relationship enrichment.
     Returns a TierChangeReport with any tier transitions detected.
+    When company_ids is provided, only those companies are scored (e.g. VC portfolio pipeline).
     """
     override = analysis_model if analysis_model != "auto" else None
     set_analysis_model(override)
@@ -49,11 +51,14 @@ async def run_scoring(
         selectinload(CompanyModel.relationships_as_a),
         selectinload(CompanyModel.relationships_as_b),
     )
+    if company_ids:
+        stmt = stmt.where(CompanyModel.id.in_(company_ids))
+        logger.info(f"Zone 3 restricted to {len(company_ids)} company IDs (VC portfolio pipeline)")
     if min_revenue:
         stmt = stmt.where(CompanyModel.revenue_gbp >= min_revenue)
     if countries:
         stmt = stmt.where(CompanyModel.hq_country.in_(countries))
-    if limit:
+    if limit and not company_ids:
         stmt = stmt.order_by(nulls_last(desc(CompanyModel.last_updated))).limit(limit)
         logger.info(f"Zone 3 limited to {limit} most recently updated companies (testing mode)")
 

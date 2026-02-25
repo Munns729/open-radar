@@ -49,6 +49,7 @@ const NAV_SECTIONS = [
         icon: Radio,
         items: [
             { id: 'competitive', label: 'Competitive Radar', icon: Radio, path: '/competitive' },
+            { id: 'vc_intel', label: 'VC Intel', icon: Radio, path: '/vc-intelligence' },
             { id: 'intel', label: 'Market Intel', icon: Newspaper, path: '/intel' },
             { id: 'portfolio', label: 'Portfolio', icon: Briefcase, path: '/portfolio' },
         ]

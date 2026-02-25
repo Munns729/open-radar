@@ -5,6 +5,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import Dashboard from './Dashboard';
 import UniverseTable from '@/features/universe/UniverseTable';
 import CompetitiveFeed from '@/features/competitive/CompetitiveFeed';
+import VCIntelligence from '@/features/competitive/VCIntelligence';
 import CarveoutBoard from '@/features/carveout/CarveoutBoard';
 import CapitalFlows from '@/features/capital/CapitalFlows';
 import Reports from './Reports';
@@ -27,6 +28,7 @@ const PAGE_TITLES = {
   '/tracker': 'Target Tracker',
   '/intelligence': 'Deal Intelligence',
   '/competitive': 'Competitive Radar',
+  '/vc-intelligence': 'VC Intelligence',
   '/intel': 'Market Intel',
   '/portfolio': 'Portfolio',
   '/relationships': 'Relationships',
@@ -57,6 +59,7 @@ function App() {
             <Route path="/tracker" element={<TrackerDashboard />} />
             <Route path="/tracker/:id" element={<TrackerDetail />} />
             <Route path="/competitive" element={<CompetitiveFeed />} />
+            <Route path="/vc-intelligence" element={<VCIntelligence />} />
             <Route path="/intel" element={<IntelDashboard />} />
             <Route path="/portfolio" element={<PlaceholderPage title="Portfolio" description="Track and monitor your existing portfolio companies." />} />
             <Route path="/relationships" element={<RelationshipsDashboard />} />

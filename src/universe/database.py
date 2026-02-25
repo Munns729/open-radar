@@ -11,7 +11,7 @@ elif 'src.universe.database' in sys.modules and 'universe.database' not in sys.m
 
 from typing import List, Optional
 from datetime import datetime, date
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, ForeignKey, Text, BigInteger, DECIMAL, Enum as SQLEnum, Index, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, ForeignKey, Text, BigInteger, DECIMAL, Float, Enum as SQLEnum, Index, JSON
 from sqlalchemy.orm import relationship
 from src.core.database import Base
 from src.core.models import CompanyTier
@@ -65,6 +65,15 @@ class CompanyModel(Base):
     tier = Column(SQLEnum(CompanyTier), default=CompanyTier.TIER_2, index=True)
     discovered_via = Column(String(100))
     exclusion_reason = Column(Text, nullable=True) # Reason why company was excluded from enrichment
+
+    # VC/portfolio-sourced company-level facts (optional; also used by universe pipeline)
+    first_funding_date = Column(Date, nullable=True)
+    is_dual_use = Column(Boolean, default=False)
+    dual_use_confidence = Column(Float, nullable=True)  # 0-1
+    has_gov_contract = Column(Boolean, default=False)
+    gov_contract_notes = Column(Text, nullable=True)
+    has_export_cert = Column(Boolean, default=False)
+    regulatory_notes = Column(Text, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

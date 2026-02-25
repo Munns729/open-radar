@@ -29,6 +29,8 @@ class CompanyVCHoldingModel(Base):
     source = Column(String(100), default="website")
     first_seen_at = Column(DateTime, nullable=True)
     last_scraped_at = Column(DateTime, nullable=True)
+    holding_status = Column(String(20), default="current", nullable=False)  # 'current' | 'exited'
+    exited_at = Column(Date, nullable=True)
 
     company = relationship("CompanyModel", foreign_keys=[company_id])
     vc_firm = relationship("VCFirmModel", foreign_keys=[vc_firm_id])
@@ -38,6 +40,7 @@ class CompanyVCHoldingModel(Base):
         UniqueConstraint("company_id", "vc_firm_id", name="uq_company_vc_holding"),
         Index("idx_company_vc_holdings_company", "company_id"),
         Index("idx_company_vc_holdings_firm", "vc_firm_id"),
+        Index("idx_company_vc_holdings_status", "holding_status"),
     )
 
     def __repr__(self):

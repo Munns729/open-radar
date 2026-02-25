@@ -80,6 +80,11 @@ function CompanyRow({ company, onSelect }) {
       </td>
       <td className="py-3 px-4">
         <div className="flex flex-col gap-0.5">
+          {(company.holding_status || "current") === "exited" ? (
+            <span className="text-xs text-slate-400 border border-slate-600 px-1.5 py-0.5 rounded">Exited</span>
+          ) : (
+            <span className="text-xs text-emerald-500 border border-emerald-700 px-1.5 py-0.5 rounded">Current</span>
+          )}
           {company.is_dual_use && (
             <span className="text-xs text-emerald-400">✓ Dual-use</span>
           )}
@@ -114,20 +119,49 @@ function CompanyRow({ company, onSelect }) {
   );
 }
 
-function CompanyDetailPanel({ company, onClose }) {
+function CompanyDetailPanel({ company, onClose, onUpdate }) {
   if (!company) return null;
   const tier = company.priority_tier || "C";
+  const [statusEdit, setStatusEdit] = useState(company.holding_status || "current");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    setStatusEdit(company.holding_status || "current");
+  }, [company?.id, company?.holding_status]);
+
+  const handleSaveStatus = async () => {
+    if (statusEdit === (company.holding_status || "current")) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/vc-portfolio/holdings/${company.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ holding_status: statusEdit }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Update failed");
+      onUpdate?.();
+      onClose();
+    } catch (e) {
+      alert(e.message || "Failed to update status");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="fixed inset-y-0 right-0 w-[480px] bg-slate-900 border-l border-slate-700 shadow-2xl z-50 overflow-y-auto">
       <div className="p-6">
         <div className="flex items-start justify-between mb-6">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className={`text-xs px-2 py-0.5 rounded font-semibold ${TIER_COLORS[tier]}`}>
                 {TIER_LABELS[tier]}
               </span>
               <span className="text-xs text-slate-400">{company.vc_fund}</span>
+              {(company.holding_status || "current") === "exited" ? (
+                <span className="text-xs text-slate-400 border border-slate-600 px-1.5 py-0.5 rounded">Exited</span>
+              ) : (
+                <span className="text-xs text-emerald-500 border border-emerald-700 px-1.5 py-0.5 rounded">Current</span>
+              )}
             </div>
             <h2 className="text-xl font-bold text-white">{company.name}</h2>
             {company.website && (
@@ -160,6 +194,25 @@ function CompanyDetailPanel({ company, onClose }) {
         {/* Key signals */}
         <Card className="bg-slate-800 border-slate-700 p-4 mb-4">
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Signals</h3>
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <span className="text-xs text-slate-400">Holding:</span>
+            <select
+              value={statusEdit}
+              onChange={e => setStatusEdit(e.target.value)}
+              className="text-xs bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-200"
+            >
+              <option value="current">Current</option>
+              <option value="exited">Exited</option>
+            </select>
+            {(statusEdit !== (company.holding_status || "current")) && (
+              <Button size="sm" onClick={handleSaveStatus} disabled={saving} className="text-xs">
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            )}
+            {company.exited_at && (company.holding_status || "current") === "exited" && (
+              <span className="text-xs text-slate-500">Exited {company.exited_at}</span>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-2 text-xs">
             {[
               ["NATO LP Backed", company.nato_lp_backed],
@@ -203,7 +256,7 @@ export default function VCIntelligence() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCompany, setSelectedCompany] = useState(null);
-  const [filters, setFilters] = useState({ tier: "", dualUseOnly: false, exitPressureOnly: false });
+  const [filters, setFilters] = useState({ tier: "", dualUseOnly: false, exitPressureOnly: false, holdingStatus: "" });
   const [triggering, setTriggering] = useState(null);
   const [csvImporting, setCsvImporting] = useState(false);
   const csvInputRef = useRef(null);
@@ -215,6 +268,7 @@ export default function VCIntelligence() {
       if (filters.tier) params.append("priority_tier", filters.tier);
       if (filters.dualUseOnly) params.append("dual_use_only", "true");
       if (filters.exitPressureOnly) params.append("exit_pressure_only", "true");
+      if (filters.holdingStatus) params.append("holding_status", filters.holdingStatus);
       params.append("limit", "100");
 
       const [targetsRes, statsRes] = await Promise.all([
@@ -344,13 +398,15 @@ export default function VCIntelligence() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Total Companies" value={stats.total_portfolio_companies} />
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          <StatCard label="Total" value={stats.total_portfolio_companies} sub="Holdings" />
+          <StatCard label="Current" value={stats.current_holdings ?? stats.total_portfolio_companies} sub="Portfolio" />
+          <StatCard label="Exited" value={stats.exited_holdings ?? 0} sub="Realized" />
           <StatCard label="Priority A" value={stats.priority_a} accent sub="Top targets" />
           <StatCard label="Priority B" value={stats.priority_b} sub="Watch list" />
-          <StatCard label="Dual-Use Flagged" value={stats.dual_use_flagged} sub="Auto-detected" />
-          <StatCard label="Exit Pressure" value={stats.exit_pressure} sub="LP window open" />
-          <StatCard label="In Universe" value={stats.already_in_universe} sub="Already tracked" />
+          <StatCard label="Dual-Use" value={stats.dual_use_flagged} sub="Flagged" />
+          <StatCard label="Exit Pressure" value={stats.exit_pressure} sub="LP window" />
+          <StatCard label="In Universe" value={stats.already_in_universe} sub="Tracked" />
         </div>
       )}
 
@@ -389,6 +445,21 @@ export default function VCIntelligence() {
           />
           Exit pressure only
         </label>
+        <div className="flex gap-1">
+          {["", "current", "exited"].map(status => (
+            <button
+              key={status || "all"}
+              onClick={() => setFilters(f => ({ ...f, holdingStatus: status }))}
+              className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                filters.holdingStatus === status
+                  ? "bg-slate-600 border-slate-500 text-white"
+                  : "border-slate-600 text-slate-400 hover:border-slate-500"
+              }`}
+            >
+              {status === "" ? "All" : status === "current" ? "Current" : "Exited"}
+            </button>
+          ))}
+        </div>
         <span className="ml-auto text-xs text-slate-500">{targets.length} companies</span>
       </div>
 
@@ -429,7 +500,11 @@ export default function VCIntelligence() {
       </Card>
 
       {/* Detail panel */}
-      <CompanyDetailPanel company={selectedCompany} onClose={() => setSelectedCompany(null)} />
+      <CompanyDetailPanel
+        company={selectedCompany}
+        onClose={() => setSelectedCompany(null)}
+        onUpdate={fetchData}
+      />
       {selectedCompany && (
         <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setSelectedCompany(null)} />
       )}

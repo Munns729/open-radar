@@ -104,6 +104,7 @@ async def get_vc_portfolio_targets(
     priority_tier: Optional[str] = Query(None, description="Filter by tier: A, B, C"),
     dual_use_only: bool = Query(False, description="Show only dual-use companies"),
     exit_pressure_only: bool = Query(False, description="Show only funds under LP exit pressure"),
+    holding_status: Optional[str] = Query(None, description="Filter by holding status: current, exited, or omit for all"),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
 ):
@@ -131,6 +132,8 @@ async def get_vc_portfolio_targets(
             stmt = stmt.where(CompanyModel.is_dual_use == True)
         if exit_pressure_only:
             stmt = stmt.where(VCExitSignalModel.fund_exit_pressure == True)
+        if holding_status and holding_status.lower() in ("current", "exited"):
+            stmt = stmt.where(CompanyVCHoldingModel.holding_status == holding_status.lower())
 
         stmt = stmt.order_by(desc(VCExitSignalModel.deal_quality_score)).limit(limit)
 
@@ -162,6 +165,8 @@ async def get_vc_portfolio_targets(
                 "notes": signal.notes if signal else None,
                 "in_radar_universe": company.extraction_complete_at is not None,
                 "universe_company_id": company.id,
+                "holding_status": holding.holding_status or "current",
+                "exited_at": holding.exited_at.isoformat() if holding.exited_at else None,
             })
 
         return StandardResponse(data=data)
@@ -193,9 +198,17 @@ async def get_vc_portfolio_stats(db: AsyncSession = Depends(get_db)):
         in_universe = await db.execute(
             select(func.count()).select_from(CompanyVCHoldingModel).join(CompanyModel).where(CompanyModel.extraction_complete_at.isnot(None))
         )
+        current_holdings = await db.execute(
+            select(func.count()).select_from(CompanyVCHoldingModel).where(CompanyVCHoldingModel.holding_status == "current")
+        )
+        exited_holdings = await db.execute(
+            select(func.count()).select_from(CompanyVCHoldingModel).where(CompanyVCHoldingModel.holding_status == "exited")
+        )
 
         return StandardResponse(data={
             "total_portfolio_companies": total_count,
+            "current_holdings": current_holdings.scalar() or 0,
+            "exited_holdings": exited_holdings.scalar() or 0,
             "priority_a": tier_a.scalar() or 0,
             "priority_b": tier_b.scalar() or 0,
             "dual_use_flagged": dual_use.scalar() or 0,
@@ -299,6 +312,36 @@ async def trigger_contracts_finder_crosscheck(
         "published_from_days": published_from_days,
         "max_suppliers": max_suppliers,
     }
+
+
+@router.patch("/vc-portfolio/holdings/{holding_id}", summary="Update Holding (status / exited)")
+async def update_vc_holding(
+    holding_id: int,
+    updates: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update a VC holding: holding_status ('current' | 'exited') and optionally exited_at (YYYY-MM-DD).
+    """
+    result = await db.execute(select(CompanyVCHoldingModel).where(CompanyVCHoldingModel.id == holding_id))
+    holding = result.scalar_one_or_none()
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    if "holding_status" in updates:
+        v = (updates.get("holding_status") or "").strip().lower()
+        if v in ("current", "exited"):
+            holding.holding_status = v
+    if "exited_at" in updates:
+        raw = updates.get("exited_at")
+        if raw is None or raw == "":
+            holding.exited_at = None
+        else:
+            try:
+                holding.exited_at = datetime.strptime(str(raw).strip()[:10], "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="exited_at must be YYYY-MM-DD")
+    await db.commit()
+    return {"status": "updated", "holding_id": holding_id}
 
 
 @router.patch("/vc-portfolio/companies/{company_id}", summary="Update Company (VC fields)")

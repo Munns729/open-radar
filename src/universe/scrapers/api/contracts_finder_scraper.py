@@ -43,6 +43,11 @@ class ContractsFinderScraper:
     async def _rate_limit(self):
         await asyncio.sleep(self.rate_limit_delay)
 
+    @staticmethod
+    def _next_url_from_response(data: Dict) -> Optional[str]:
+        """Get next-page URL from API response (OCDS pagination uses links.next)."""
+        return (data.get("links") or {}).get("next")
+
     def _extract_suppliers_from_releases(self, releases: List[Dict]) -> List[Dict[str, Any]]:
         """Extract supplier/winner companies from OCDS releases."""
         companies = {}
@@ -176,14 +181,13 @@ class ContractsFinderScraper:
             "limit": 100,
         }
         merged: Dict[str, List[str]] = {}
-        cursor = None
-        page = 0
+        next_url: Optional[str] = None
         while len(merged) < max_unique:
-            if cursor:
-                params["cursor"] = cursor
             try:
                 await self._rate_limit()
-                async with self.session.get(self.BASE_URL, params=params) as response:
+                url = next_url if next_url else self.BASE_URL
+                req_params = params if not next_url else None
+                async with self.session.get(url, params=req_params) as response:
                     if response.status != 200:
                         logger.warning(f"Contracts Finder API {response.status}")
                         break
@@ -200,9 +204,8 @@ class ContractsFinderScraper:
                 for u in urls:
                     if u not in merged[key]:
                         merged[key].append(u)
-            page += 1
-            cursor = data.get("cursor")
-            if not cursor:
+            next_url = self._next_url_from_response(data)
+            if not next_url:
                 break
         logger.info(f"Contracts Finder: {len(merged)} unique suppliers from award notices (last {published_from_days} days)")
         return merged
@@ -231,19 +234,17 @@ class ContractsFinderScraper:
         }
 
         all_companies = []
-        cursor = None
+        next_url = None
 
         while len(all_companies) < limit:
-            if cursor:
-                params["cursor"] = cursor
-
             try:
                 await self._rate_limit()
-                async with self.session.get(self.BASE_URL, params=params) as response:
+                url = next_url if next_url else self.BASE_URL
+                req_params = params if not next_url else None
+                async with self.session.get(url, params=req_params) as response:
                     if response.status != 200:
                         logger.warning(f"Contracts Finder API {response.status}")
                         break
-
                     data = await response.json()
             except Exception as e:
                 logger.error(f"Contracts Finder request failed: {e}")
@@ -262,8 +263,8 @@ class ContractsFinderScraper:
                     if len(all_companies) >= limit:
                         break
 
-            cursor = data.get("cursor")
-            if not cursor:
+            next_url = self._next_url_from_response(data)
+            if not next_url:
                 break
 
         logger.info(f"Contracts Finder: {len(all_companies)} companies")

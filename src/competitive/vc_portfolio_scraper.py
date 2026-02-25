@@ -189,11 +189,12 @@ Below is the visible text from the portfolio page (may be messy HTML-derived tex
 Extract every company name that appears as a portfolio company. For each company include:
 - name: exact or best-effort company name (required)
 - description: one-line description or sector if visible (optional)
+- status: if the page has separate sections for current portfolio vs exited/realized companies, set "current" or "exited"; otherwise omit
 
 Ignore navigation items, footer links, "View all", "Learn more", and generic text. Only include actual portfolio company names.
 
-Return a JSON array of objects with keys "name" and optionally "description". Example:
-[{{"name": "Acme Corp", "description": "Cybersecurity software"}}, {{"name": "Beta Ltd"}}]
+Return a JSON array of objects with keys "name" and optionally "description" and "status". Example:
+[{{"name": "Acme Corp", "description": "Cybersecurity software", "status": "current"}}, {{"name": "Beta Ltd", "status": "exited"}}]
 
 Page text:
 ---
@@ -230,6 +231,8 @@ Return only the JSON array. No markdown, no explanation."""
                 continue
             seen_norm.add(name_norm)
             description = (item.get("description") or "").strip()[:500]
+            raw_status = (item.get("status") or "current").strip().lower()
+            holding_status = "exited" if raw_status == "exited" else "current"
             is_dual_use, confidence = _detect_dual_use(name + " " + description)
             companies.append({
                 "name": name,
@@ -239,6 +242,7 @@ Return only the JSON array. No markdown, no explanation."""
                 "dual_use_confidence": confidence,
                 "source": "llm",
                 "source_url": None,
+                "holding_status": holding_status,
             })
         logger.info("LLM extracted %d companies for %s", len(companies), fund_name)
         return companies[:80]
@@ -459,9 +463,11 @@ async def scrape_and_upsert_portfolio(fund_name: str) -> int:
                 )
             )
             hold = existing_hold.scalar_one_or_none()
+            holding_status = "exited" if (co.get("holding_status") or "current") == "exited" else "current"
             if hold:
                 hold.source_url = source_url
                 hold.last_scraped_at = now
+                hold.holding_status = holding_status
             else:
                 hold = CompanyVCHoldingModel(
                     company_id=company_id,
@@ -470,6 +476,7 @@ async def scrape_and_upsert_portfolio(fund_name: str) -> int:
                     source=co.get("source", "website"),
                     first_seen_at=now,
                     last_scraped_at=now,
+                    holding_status=holding_status,
                 )
                 session.add(hold)
                 upserted += 1

@@ -212,7 +212,10 @@ class TrackingAlert(Base):
     alert_type: Mapped[str] = mapped_column(String(50), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    
+
+    risk_level: Mapped[str] = mapped_column(String(20), default="low", index=True)  # low | elevated | high
+    context_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
 
     # Relationships

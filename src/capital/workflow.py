@@ -140,7 +140,7 @@ async def scan_capital_flows(sources: Optional[List[str]] = None):
                             # Extract parsed fields
                             c_name = co.get('name') or co.get('Company Name')
                             if not c_name: continue
-                            
+
                             inv = PEInvestmentModel(
                                 pe_firm_id=firm.id,
                                 company_name=c_name,
@@ -149,6 +149,22 @@ async def scan_capital_flows(sources: Optional[List[str]] = None):
                                 is_exited=(str(co.get('status')).lower() in ['exited', 'realized'])
                             )
                             session.add(inv)
+
+                            try:
+                                from src.universe.database import CompanyModel
+                                from src.canon.service import get_or_create_canon
+
+                                matched_result = await session.execute(
+                                    select(CompanyModel).where(
+                                        CompanyModel.name.ilike(f"%{c_name}%")
+                                    ).limit(1)
+                                )
+                                matched_co = matched_result.scalar_one_or_none()
+                                if matched_co:
+                                    await get_or_create_canon(matched_co.id)
+                            except Exception as e:
+                                logger.error("Canon initialisation failed for %s: %s", c_name, e)
+
                         await session.commit()
                     except Exception as e:
                         logger.error(f"Failed to scrape {firm.website}: {e}")

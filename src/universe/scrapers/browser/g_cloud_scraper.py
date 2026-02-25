@@ -46,8 +46,11 @@ class GCloudScraper(BaseScraper):
                 
                 if not services:
                     logger.warning("No services found on page. Dumping HTML for debugging...")
+                    from pathlib import Path
+                    log_dir = Path("logs")
+                    log_dir.mkdir(exist_ok=True)
                     content = await page.content()
-                    with open("gcloud_debug.html", "w", encoding="utf-8") as f:
+                    with open(log_dir / "gcloud_debug.html", "w", encoding="utf-8") as f:
                         f.write(content)
                     break
                     

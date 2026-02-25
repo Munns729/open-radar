@@ -58,7 +58,8 @@ async def run_competitive_radar(headless: bool = True):
 
     # 4. Score and Save
     from src.core.database import get_async_db
-    
+    from src.canon.service import get_or_create_canon, update_canon
+
     scorer = ThreatScorer()
     new_threats = []
     
@@ -93,7 +94,35 @@ async def run_competitive_radar(headless: bool = True):
                     }
                 )
                 await session.commit()
-                
+
+                try:
+                    if score_val > 40:
+                        from src.universe.database import CompanyModel
+                        from sqlalchemy import select
+
+                        result = await session.execute(
+                            select(CompanyModel).where(
+                                CompanyModel.name.ilike(f"%{ann.get('company_name', '')}%")
+                            ).limit(1)
+                        )
+                        matched = result.scalar_one_or_none()
+                        if matched:
+                            canon = await get_or_create_canon(matched.id)
+                            existing_q = canon.open_questions or []
+                            signal_note = (
+                                f"Competitive signal: {ann.get('company_name', '')} raised "
+                                f"{ann.get('round_type', 'round')} — threat score {score_val}/100"
+                            )
+                            if signal_note not in existing_q:
+                                await update_canon(
+                                    company_id=matched.id,
+                                    updates={"open_questions": existing_q + [signal_note]},
+                                    source_module="competitive",
+                                    triggered_by=f"competitive_radar_{datetime.now().date()}",
+                                )
+                except Exception as e:
+                    logger.error("Canon write-back failed in competitive workflow: %s", e)
+
                 # Keep track for report
                 if threat_score.threat_level in ["high", "critical", "medium"]: # Adjust based on enum values
                      new_threats.append({

@@ -8,6 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/Badge';
 import { KPICard } from '@/components/ui/KPICard';
 import { MoatBreakdown } from '@/components/ui/MoatBreakdown';
+import RecentChanges from '@/features/canon/RecentChanges';
+import CoverageManifest from '@/features/canon/CoverageManifest';
+import ProposalQueue from '@/features/canon/ProposalQueue';
 import {
     Building2,
     Target,
@@ -18,6 +21,8 @@ import {
     Coins,
     Clock,
     ChevronRight,
+    ChevronDown,
+    ChevronUp,
     Flame,
     Sparkles,
     RefreshCw
@@ -48,19 +53,22 @@ export default function Dashboard() {
     const [tier1ACompanies, setTier1ACompanies] = useState([]);
     const [hotSectors, setHotSectors] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [coverageExpanded, setCoverageExpanded] = useState(false);
+    const [pendingProposals, setPendingProposals] = useState([]);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
             try {
                 // Fetch all data in parallel
                 // api.get returns the data object directly (or null if caught)
-                const [statsData, alertsData, activityData, tier1A, sectors, recentStatsData] = await Promise.all([
+                const [statsData, alertsData, activityData, tier1A, sectors, recentStatsData, proposalsData] = await Promise.all([
                     api.getDashboardStats().catch(() => null),
                     api.getAlerts({ unread_only: true, limit: 5 }).catch(() => null),
                     api.getDashboardActivity({ limit: 10 }).catch(() => null),
                     api.getCompanies({ tier: 'TIER_1A', limit: 5 }).catch(() => null),
                     api.getHotSectors().catch(() => null),
-                    api.getUniverseRecentStats().catch(() => null)
+                    api.getUniverseRecentStats().catch(() => null),
+                    api.getCanonProposals().catch(() => [])
                 ]);
 
                 // 1. Stats
@@ -101,6 +109,10 @@ export default function Dashboard() {
 
                 if (recentStatsData) {
                     setRecentStats(recentStatsData);
+                }
+
+                if (Array.isArray(proposalsData)) {
+                    setPendingProposals(proposalsData);
                 }
 
             } catch (error) {
@@ -215,6 +227,35 @@ export default function Dashboard() {
                     loading={stats.loading}
                 />
             </div>
+
+            {/* Coverage manifest (collapsible, collapsed by default) */}
+            <Card className="border-border-subtle bg-surface">
+                <CardHeader
+                    className="pb-2 cursor-pointer hover:bg-surface-hover/50 transition-colors rounded-t-lg"
+                    onClick={() => setCoverageExpanded((e) => !e)}
+                >
+                    <div className="flex flex-row items-center justify-between">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            {coverageExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            Coverage manifest
+                        </CardTitle>
+                    </div>
+                    <p className="text-xs text-text-sec mt-1">
+                        Stale-coverage detection by sector. Expand to view table.
+                    </p>
+                </CardHeader>
+                {coverageExpanded && (
+                    <CardContent className="pt-0">
+                        <CoverageManifest />
+                    </CardContent>
+                )}
+            </Card>
+
+            {/* Recent canon changes */}
+            <RecentChanges />
+
+            {/* Proposal queue: tier changes awaiting approval */}
+            {pendingProposals.length > 0 && <ProposalQueue />}
 
             {/* Two Column Row */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

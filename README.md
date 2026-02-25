@@ -111,6 +111,7 @@ See `AGENTS.md` for a comprehensive guide to the codebase, database schema, API 
 | `docs/ARCHITECTURE.md` | System architecture |
 | `docs/GETTING_STARTED.md` | Detailed setup guide |
 | `docs/design/custom_investment_thesis.md` | Custom thesis scoring architecture |
+| `VISUALIZATION.md` | Sourcing flow and architecture diagram |
 | `docs/md/` | Per-module documentation |
 | `docs/specs/` | Module specifications |
 

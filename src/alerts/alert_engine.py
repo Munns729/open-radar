@@ -107,7 +107,7 @@ class AlertEngine:
                 msg = f"New {event.event_type.replace('_', ' ').title()}: {event.title}"
                 if event.description:
                     msg += f"\n{event.description[:100]}..."
-                
+
                 # Create Alert Record
                 alert = TrackingAlert(
                     tracked_company_id=company.id,
@@ -115,6 +115,19 @@ class AlertEngine:
                     message=msg,
                     is_read=False
                 )
+                try:
+                    from src.alerts.classifier import classify_alert
+                    risk_level, context_summary = await classify_alert(
+                        alert_type=event.event_type,
+                        message=msg,
+                        company_id=company.company_id
+                    )
+                    alert.risk_level = risk_level
+                    alert.context_summary = context_summary
+                except Exception as e:
+                    logger.error(f"Alert classification failed: {e}")
+                    alert.risk_level = "low"
+                    alert.context_summary = None
                 session.add(alert)
                 new_alerts_count += 1
                 

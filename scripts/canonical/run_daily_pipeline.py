@@ -392,7 +392,7 @@ async def run_pipeline(
             briefing = await _run_briefing(tier_report)
             if briefing:
                 logger.info(f"Briefing saved to outputs/briefing_{briefing.week_starting}.md")
-                logger.info(f"Also available at: latest_briefing.md")
+                logger.info(f"Also available at: outputs/latest_briefing.md")
         except Exception as e:
             logger.warning(f"Briefing generation failed (non-fatal): {e}")
     else:
@@ -419,11 +419,12 @@ async def _run_briefing(tier_report):
 
     briefing = await generate_market_briefing()
     
-    # Append tier changes to latest_briefing.md if there were changes
-    if tier_report.has_changes and Path("latest_briefing.md").exists():
-        existing = Path("latest_briefing.md").read_text()
+    # Append tier changes to outputs/latest_briefing.md if there were changes
+    latest_briefing = Path("outputs") / "latest_briefing.md"
+    if tier_report.has_changes and latest_briefing.exists():
+        existing = latest_briefing.read_text()
         tier_section = "\n\n---\n\n" + tier_report.render_markdown()
-        Path("latest_briefing.md").write_text(existing + tier_section)
+        latest_briefing.write_text(existing + tier_section)
 
     return briefing
 

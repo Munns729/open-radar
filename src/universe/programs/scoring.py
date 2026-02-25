@@ -3,6 +3,7 @@ Scoring program: Graph-free moat scoring, tier assignment, audit trail.
 Zone 3b: Moat scoring and tier assignment.
 """
 import logging
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import desc, select
@@ -147,6 +148,32 @@ async def run_scoring(
             trigger=trigger,
         )
         session.add(event)
+
+        try:
+            from src.canon.service import record_moat_score, update_canon
+
+            raw_scores = company.moat_analysis.get("raw_dimension_scores", {}) if company.moat_analysis else {}
+
+            for pillar, score in raw_scores.items():
+                await record_moat_score(
+                    company_id=company.id,
+                    pillar=pillar,
+                    score=int(score) if not isinstance(score, int) else score,
+                    source="llm_scoring",
+                    triggered_by=f"scoring_run_{datetime.now().date()}",
+                )
+
+            await update_canon(
+                company_id=company.id,
+                updates={
+                    "current_tier": company.tier.value if hasattr(company.tier, "value") else str(company.tier),
+                    "moat_assessment": raw_scores,
+                },
+                source_module="universe_scoring",
+                triggered_by=f"scoring_run_{datetime.now().date()}",
+            )
+        except Exception as e:
+            logger.error("Canon write-back failed after scoring %s: %s", company.id, e)
 
         await session.commit()
 

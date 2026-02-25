@@ -54,7 +54,13 @@ async def run_intel_scan():
         # 3. Score News Relevance
         scorer = RelevanceScorer(session)
         await scorer.process_unscored_items()
-        
+
+        # TODO: wire market_intelligence to capability signal detection
+        # When news items are processed, check headlines against CapabilitySignalDefinition labels
+        # and auto-log via: from src.capability.service import record_signal_observation
+        # Manual logging is available at POST /api/capability/observations in the meantime
+        logger.debug("Capability signal auto-detection: not yet wired — use manual endpoint")
+
         # 4. Analyze Regulatory Changes for Scoring Impact
         if new_changes:
             from src.market_intelligence.analyzers.scoring_impact_analyzer import ScoringImpactAnalyzer
@@ -88,8 +94,8 @@ async def generate_market_briefing():
         ts_path.write_text(md_content)
         logger.info(f"Briefing saved to {ts_path}")
         
-        # Overwrite latest_briefing.md for quick access
-        latest_path = Path("latest_briefing.md")
+        # Overwrite latest_briefing.md for quick access (in outputs with other briefings)
+        latest_path = output_dir / "latest_briefing.md"
         latest_path.write_text(md_content)
         logger.info(f"Latest briefing updated: {latest_path}")
         

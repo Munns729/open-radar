@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.database import get_db
@@ -30,6 +30,8 @@ class AlertRead(BaseModel):
     alert_type: str
     message: str
     is_read: bool
+    risk_level: str
+    context_summary: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -54,7 +56,8 @@ class PreferenceUpdate(BaseModel):
 
 @router.get("/", response_model=StandardResponse[List[dict]], summary="Get Alerts")
 async def get_alerts(
-    unread_only: bool = False, 
+    unread_only: bool = False,
+    risk_level: Optional[str] = None,
     limit: int = 50,
     session: AsyncSession = Depends(get_db)
 ):
@@ -65,13 +68,19 @@ async def get_alerts(
     stmt = (
         select(TrackingAlert, TrackedCompany.company_id)
         .outerjoin(TrackedCompany, TrackingAlert.tracked_company_id == TrackedCompany.id)
-        .order_by(TrackingAlert.created_at.desc())
     )
 
     if unread_only:
         stmt = stmt.where(TrackingAlert.is_read == False)
+    if risk_level is not None:
+        stmt = stmt.where(TrackingAlert.risk_level == risk_level)
 
-    stmt = stmt.limit(limit)
+    risk_order = case(
+        (TrackingAlert.risk_level == "high", 1),
+        (TrackingAlert.risk_level == "elevated", 2),
+        else_=3
+    )
+    stmt = stmt.order_by(risk_order, TrackingAlert.created_at.desc()).limit(limit)
 
     result = await session.execute(stmt)
     rows = result.all()
@@ -84,6 +93,8 @@ async def get_alerts(
             "alert_type": alert.alert_type,
             "message": alert.message,
             "is_read": alert.is_read,
+            "risk_level": getattr(alert, "risk_level", "low"),
+            "context_summary": getattr(alert, "context_summary", None),
             "created_at": alert.created_at.isoformat() if alert.created_at else None,
         }
         for alert, company_id in rows
@@ -124,6 +135,8 @@ async def update_alert(
         "alert_type": alert.alert_type,
         "message": alert.message,
         "is_read": alert.is_read,
+        "risk_level": getattr(alert, "risk_level", "low"),
+        "context_summary": getattr(alert, "context_summary", None),
         "created_at": alert.created_at.isoformat() if alert.created_at else None,
     })
 

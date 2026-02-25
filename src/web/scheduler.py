@@ -43,6 +43,28 @@ async def run_daily_pipeline():
         logger.error(f"Daily pipeline failed: {e}", exc_info=True)
 
 
+async def run_stale_canon_check():
+    """Mark canons not refreshed in 90 days as stale."""
+    logger.info("Running scheduled stale Canon check...")
+    try:
+        from src.canon.service import mark_stale_canons
+        count = await mark_stale_canons(stale_days=90)
+        logger.info(f"Stale canon check complete: {count} records marked stale")
+    except Exception as e:
+        logger.error(f"Stale canon check failed: {e}", exc_info=True)
+
+
+async def run_proposal_expiry():
+    """Auto-expire pending canon proposals past their expires_at."""
+    logger.info("Running proposal expiry check...")
+    try:
+        from src.canon.service import expire_stale_proposals
+        count = await expire_stale_proposals()
+        logger.info(f"Auto-expired {count} stale proposals")
+    except Exception as e:
+        logger.error(f"Proposal expiry failed: {e}", exc_info=True)
+
+
 def start_scheduler():
     """
     Initialize and start the scheduler.
@@ -52,6 +74,22 @@ def start_scheduler():
         run_daily_pipeline,
         CronTrigger(hour=6, minute=0),
         id='daily_pipeline',
+        replace_existing=True
+    )
+
+    # Daily: mark stale canons (6:30 AM)
+    scheduler.add_job(
+        run_stale_canon_check,
+        CronTrigger(hour=6, minute=30),
+        id='stale_canon_check',
+        replace_existing=True
+    )
+
+    # Daily: expire stale canon proposals (7:00 AM)
+    scheduler.add_job(
+        run_proposal_expiry,
+        CronTrigger(hour=7, minute=0),
+        id='proposal_expiry',
         replace_existing=True
     )
     
@@ -64,7 +102,11 @@ def start_scheduler():
     )
     
     scheduler.start()
-    logger.info("APScheduler started. Daily pipeline at 6am, Weekly briefing Mondays 8am.")
+    logger.info("APScheduler started. Daily pipeline 6am, Stale canon 6:30am, Proposal expiry 7am, Weekly briefing Mondays 8am.")
+
+    import asyncio
+    from src.capability.seed import seed_capability_data
+    asyncio.ensure_future(seed_capability_data())
 
 async def stop_scheduler():
     """

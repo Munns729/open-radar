@@ -132,7 +132,10 @@ class GoodFirmsAgentScraper(BaseBrowsingAgent):
                     
         except Exception as e:
             logger.error(f"GoodFirms agent discovery failed: {e}")
-            await self.page.screenshot(path="goodfirms_agent_error.png")
+            from pathlib import Path
+            log_dir = Path("logs")
+            log_dir.mkdir(exist_ok=True)
+            await self.page.screenshot(path=str(log_dir / "goodfirms_agent_error.png"))
         finally:
             await self.stop()
             

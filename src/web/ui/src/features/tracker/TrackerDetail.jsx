@@ -1,20 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
-import { ArrowLeft, Building2, Calendar, Link as LinkIcon, AlertTriangle, CheckCircle, Search, MessageSquare, LayoutDashboard } from 'lucide-react';
+import { ArrowLeft, Building2, Calendar, Link as LinkIcon, AlertTriangle, CheckCircle, Search, MessageSquare, LayoutDashboard, FileStack } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import NotesPanel from './NotesPanel';
 import AgentChat from './AgentChat';
+import CompanyCanonPanel from '@/features/canon/CompanyCanonPanel';
+import ConvictionLog from '@/features/canon/ConvictionLog';
+import DocumentUploadPanel from '@/features/documents/DocumentUploadPanel';
+import DocumentIntelligenceSummary from '@/features/documents/DocumentIntelligenceSummary';
 
 export default function TrackerDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'agent'
+    const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'agent' | 'documents'
 
     const fetchDetail = async () => {
         try {
@@ -93,11 +97,28 @@ export default function TrackerDetail() {
                     <MessageSquare className="h-4 w-4" />
                     Radar Agent
                 </button>
+                <button
+                    onClick={() => setActiveTab('documents')}
+                    className={cn(
+                        "px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2",
+                        activeTab === 'documents'
+                            ? "border-primary text-primary"
+                            : "border-transparent text-text-sec hover:text-text-pri"
+                    )}
+                >
+                    <FileStack className="h-4 w-4" />
+                    Documents
+                </button>
             </div>
 
             {/* Main Content Grid */}
             <div className="flex-1 min-h-0">
-                {activeTab === 'overview' ? (
+                {activeTab === 'documents' ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-y-auto">
+                        <DocumentUploadPanel companyId={tracking.company_id} />
+                        <DocumentIntelligenceSummary companyId={tracking.company_id} />
+                    </div>
+                ) : activeTab === 'overview' ? (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-0">
                         {/* Left Column: Overview & Events */}
                         <div className="lg:col-span-2 space-y-6 overflow-y-auto pr-2 scrollbar-hide">
@@ -155,6 +176,10 @@ export default function TrackerDetail() {
                                     )}
                                 </CardContent>
                             </Card>
+
+                            {/* Canon & Conviction Log */}
+                            <CompanyCanonPanel companyId={tracking.company_id} />
+                            <ConvictionLog companyId={tracking.company_id} />
                         </div>
 
                         {/* Right Column: Interactive Notes */}

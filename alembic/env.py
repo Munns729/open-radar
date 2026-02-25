@@ -26,6 +26,10 @@ from src.relationships import database  # noqa
 from src.market_intelligence import database  # noqa
 from src.reporting import database  # noqa
 from src.carveout import database  # noqa
+from src.capability import database  # noqa
+from src.canon import database  # noqa
+from src.resilience import database  # noqa
+from src.documents import database as documents_db  # noqa
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

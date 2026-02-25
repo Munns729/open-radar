@@ -26,6 +26,7 @@ dependencies = [
     "pytest-asyncio",
     "rich",
     "pypdf",
+    "pdfplumber",
     "python-multipart",
     "aiofiles",
     "fastapi[standard]>=0.115.0",

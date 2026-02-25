@@ -17,7 +17,7 @@ RADAR is an investment intelligence platform that automates the "top of the funn
 | **Deal Intelligence** | `deal_intelligence`| Valuation comparables and probability scoring | `python -m src.deal_intelligence.workflow` |
 | **Market Intelligence** | `market_intelligence` | Trend detection, news aggregation, weekly briefings | `python -m src.market_intelligence.workflow` |
 | **CRM** | `relationships`| Manage contacts and network strength | `src.relationships.database.Contact` |
-| **Target Tracker** | `tracker` | Monitor specific companies for events and alerts | `src.tracker.workflow` (if exists) or `src.tracker` API |
+| **Target Tracker** | `tracker` | Monitor specific companies for events and alerts | `python -m src.tracker.workflow` or `/api/tracker` |
 | **Reporting** | `reporting` | HTML/Excel report generation | `python -m src.reporting` |
 | **Alerts** | `alerts` | Alert engine + notification channels | `src.alerts.alert_engine.AlertEngine` |
 | **Thesis Validator** | `web` + `capital` | Company fit analysis + market hypothesis validation | `GET /api/thesis/*` (UI: `/thesis`) |
@@ -32,7 +32,7 @@ startup by `src/core/thesis.py` and exposed as the `thesis_config` singleton.
 - **Example**: `config/thesis.example.yaml` (committed — generic starting point)
 - **Loader**: `src/core/thesis.py` → `thesis_config` singleton
 - **Env var**: `THESIS_CONFIG_PATH` overrides the default path
-- **API**: `GET /api/config/thesis` returns the active thesis summary
+- **API**: `GET /config/thesis` returns the active thesis summary; `GET /api/thesis/config` returns full config
 
 To change scoring behavior, edit the YAML — no code changes needed.
 
@@ -80,7 +80,7 @@ The database runs on PostgreSQL (`docker-compose up -d`).
 - `interactions`: Log of emails, calls, and meetings.
 - `network_connections`: Graph of who knows whom.
 
-## 4. Entry Point Cheat Sheet
+## 5. Entry Point Cheat Sheet
 
 ### Build/Update Universe
 Four programs (run independently or in sequence). Orchestrator: `src/universe/workflow.py`; implementations: `src/universe/programs/`.
@@ -116,7 +116,7 @@ python -m src.market_intelligence.workflow
 python -m src.reporting --format html --tier 1A
 ```
 
-## 5. Global API Reference
+## 6. Global API Reference
 The API serves as the control plane. All endpoints are prefixed with `/api`.
 - **Docs**: `http://127.0.0.1:8000/docs`
 
@@ -151,9 +151,9 @@ The API serves as the control plane. All endpoints are prefixed with `/api`.
 - **Relationships** (`/api/relationships`): CRM contacts and graph.
 - **Reports** (`/api/reports`): Report generation triggers.
 - **Alerts** (`/api/alerts`): User alert feed.
-- **Config** (`/api/config`): System settings.
+- **Config** (`/config`): System settings (currency, thesis summary).
 
-## 6. Module Boundaries & Ownership
+## 7. Module Boundaries & Ownership
 
 Each module under src/ follows this pattern:
 - `database.py`: SQLAlchemy models (the module's tables)
@@ -176,13 +176,13 @@ Each module under src/ follows this pattern:
 - `web/routers/__init__.py`: Router registration. New routers must be added here.
 - **Scraper bases**: All scraper bases live in `universe/scrapers/base.py` (`BaseScraper` for Playwright, `ApiScraper` for aiohttp). Universe and other modules (e.g. carveout) import from `src.universe.scrapers.base`. There is no scraper base in core. See `universe/scrapers/README.md`.
 
-## 7. Logic Flow (The "Agent Loop")
+## 8. Logic Flow (The "Agent Loop")
 1.  **Discover**: Run Universe Scrapers to find "Raw" targets.
 2.  **Enrich**: Fetch financials (Companies House) and Web data.
 3.  **Score**: Run `MoatScorer` (Universe) and `DealProbabilityScorer` (Intel).
 4.  **Monitor**: Competitive Radar (VC) and Capital Flows (PE) provide context-driven alerts.
 
-## 8. Common Pitfalls
+## 9. Common Pitfalls
 
 1. **Async/Sync Mismatch**: `universe/programs/*` and the universe workflow use **async** sessions (`get_async_db()`). `capital/workflow.py` uses SYNC sessions. Do NOT mix async session calls into capital workflow without a full refactor. `tracker/` and `deal_intelligence/` are properly async.
 
